@@ -1,5 +1,7 @@
 // CLI Command Parser
 // by ht7813
+//
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include <stdexcept>
