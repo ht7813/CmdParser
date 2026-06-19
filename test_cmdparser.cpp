@@ -9,35 +9,34 @@ using namespace cmdparser;
 // Test Fixtures
 // ============================================================================
 
-class CmdParserTest : public ::testing::Test {
+class CmdParserTest : public ::testing::Test
+{
 protected:
     CommandParser parser{"testcli"};
 
-    void SetUp() override {
+    void SetUp() override
+    {
         // Register a basic command for testing
         parser.registerCommand("greet")
             .description("Greet someone")
             .argument<std::string>("-n")
             .argumentFlag<bool>("-u")
-            .execute([](CommandArgument& args) -> bool {
-                return true;
-            });
+            .execute([](CommandArgument &args) -> bool
+                     { return true; });
 
         parser.registerCommand("add")
             .description("Add numbers")
             .argument<int>("-a")
             .argument<int>("-b")
-            .execute([](CommandArgument& args) -> bool {
-                return true;
-            });
+            .execute([](CommandArgument &args) -> bool
+                     { return true; });
 
         parser.registerCommand("echo")
             .description("Echo positional args")
             .positional<std::string>("msg")
             .positionalOptional<std::string>("extra")
-            .execute([](CommandArgument& args) -> bool {
-                return true;
-            });
+            .execute([](CommandArgument &args) -> bool
+                     { return true; });
     }
 };
 
@@ -45,53 +44,53 @@ protected:
 // Command Registration Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, RegisterCommand) {
+TEST_F(CmdParserTest, RegisterCommand)
+{
     EXPECT_NO_THROW({
         parser.registerCommand("test");
     });
 }
 
-TEST_F(CmdParserTest, RegisterDuplicateCommand) {
-    EXPECT_THROW({
-        parser.registerCommand("greet");
-    }, exceptions::DuplicateCommand);
+TEST_F(CmdParserTest, RegisterDuplicateCommand)
+{
+    EXPECT_THROW({ parser.registerCommand("greet"); }, exceptions::DuplicateCommand);
 }
 
-TEST_F(CmdParserTest, RegisterAlias) {
+TEST_F(CmdParserTest, RegisterAlias)
+{
     EXPECT_NO_THROW({
         parser.registerAlias("gr", "greet");
     });
 }
 
-TEST_F(CmdParserTest, RegisterAliasToUnknownCommand) {
-    EXPECT_THROW({
-        parser.registerAlias("xyz", "nonexistent");
-    }, exceptions::UnknownCommand);
+TEST_F(CmdParserTest, RegisterAliasToUnknownCommand)
+{
+    EXPECT_THROW({ parser.registerAlias("xyz", "nonexistent"); }, exceptions::UnknownCommand);
 }
 
 // ============================================================================
 // Basic Parsing Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, ParseKnownCommand) {
-    const char* argv[] = {"testcli", "greet", "-n", "World"};
-    EXPECT_TRUE(parser.parse(4, const_cast<char**>(argv)));
+TEST_F(CmdParserTest, ParseKnownCommand)
+{
+    const char *argv[] = {"testcli", "greet", "-n", "World"};
+    EXPECT_TRUE(parser.parse(4, const_cast<char **>(argv)));
 }
 
-TEST_F(CmdParserTest, ParseUnknownCommand) {
-    const char* argv[] = {"testcli", "unknown"};
-    EXPECT_THROW({
-        parser.parse(2, const_cast<char**>(argv));
-    }, exceptions::UnknownCommand);
+TEST_F(CmdParserTest, ParseUnknownCommand)
+{
+    const char *argv[] = {"testcli", "unknown"};
+    EXPECT_THROW({ parser.parse(2, const_cast<char **>(argv)); }, exceptions::UnknownCommand);
 }
 
-TEST_F(CmdParserTest, ParseEmptyCommand) {
-    EXPECT_THROW({
-        parser.parse("");
-    }, exceptions::InvalidCommandSyntax);
+TEST_F(CmdParserTest, ParseEmptyCommand)
+{
+    EXPECT_THROW({ parser.parse(""); }, exceptions::InvalidCommandSyntax);
 }
 
-TEST_F(CmdParserTest, ParseCommandLineString) {
+TEST_F(CmdParserTest, ParseCommandLineString)
+{
     EXPECT_TRUE(parser.parse("greet -n Alice"));
 }
 
@@ -99,18 +98,21 @@ TEST_F(CmdParserTest, ParseCommandLineString) {
 // Argument Retrieval Tests
 // ============================================================================
 
-class ArgRetrievalTest : public CmdParserTest {
+class ArgRetrievalTest : public CmdParserTest
+{
 protected:
     bool stringArgCaptured = false;
     std::string capturedString;
     bool boolArgCaptured = false;
     bool capturedBool = false;
 
-    void SetUp() override {
+    void SetUp() override
+    {
         parser.registerCommand("capture")
             .argumentOptional<std::string>("-s")
             .argumentFlag<bool>("-f")
-            .execute([this](CommandArgument& args) -> bool {
+            .execute([this](CommandArgument &args) -> bool
+                     {
                 if (args.has("-s")) {
                     stringArgCaptured = true;
                     capturedString = args.get<std::string>("-s");
@@ -119,38 +121,41 @@ protected:
                     boolArgCaptured = true;
                     capturedBool = args.get<bool>("-f");
                 }
-                return true;
-            });
+                return true; });
     }
 };
 
-TEST_F(ArgRetrievalTest, GetStringArgument) {
-    const char* argv[] = {"testcli", "capture", "-s", "test_value"};
-    parser.parse(4, const_cast<char**>(argv));
-    
+TEST_F(ArgRetrievalTest, GetStringArgument)
+{
+    const char *argv[] = {"testcli", "capture", "-s", "test_value"};
+    parser.parse(4, const_cast<char **>(argv));
+
     EXPECT_TRUE(stringArgCaptured);
     EXPECT_EQ(capturedString, "test_value");
 }
 
-TEST_F(ArgRetrievalTest, GetBoolFlag) {
-    const char* argv[] = {"testcli", "capture", "-f"};
-    parser.parse(3, const_cast<char**>(argv));
-    
+TEST_F(ArgRetrievalTest, GetBoolFlag)
+{
+    const char *argv[] = {"testcli", "capture", "-f"};
+    parser.parse(3, const_cast<char **>(argv));
+
     EXPECT_TRUE(boolArgCaptured);
     EXPECT_TRUE(capturedBool);
 }
 
-TEST_F(ArgRetrievalTest, ArgumentNotFound) {
-    const char* argv[] = {"testcli", "capture"};
-    parser.parse(2, const_cast<char**>(argv));
-    
+TEST_F(ArgRetrievalTest, ArgumentNotFound)
+{
+    const char *argv[] = {"testcli", "capture"};
+    parser.parse(2, const_cast<char **>(argv));
+
     EXPECT_FALSE(stringArgCaptured);
 }
 
-TEST_F(ArgRetrievalTest, HasArgument) {
-    const char* argv[] = {"testcli", "capture", "-s", "value"};
-    parser.parse(3, const_cast<char**>(argv));
-    
+TEST_F(ArgRetrievalTest, HasArgument)
+{
+    const char *argv[] = {"testcli", "capture", "-s", "value"};
+    parser.parse(3, const_cast<char **>(argv));
+
     // The handler should have access to args
 }
 
@@ -158,36 +163,38 @@ TEST_F(ArgRetrievalTest, HasArgument) {
 // Positional Arguments Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, PositionalArgumentParsing) {
+TEST_F(CmdParserTest, PositionalArgumentParsing)
+{
     bool executed = false;
     parser.registerCommand("pos")
         .positional<std::string>("name")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.getPositional(0), "testfile");
             EXPECT_EQ(args.positionalCount(), 1);
             executed = true;
-            return true;
-        });
+            return true; });
 
-    const char* argv[] = {"testcli", "pos", "testfile"};
-    EXPECT_TRUE(parser.parse(3, const_cast<char**>(argv)));
+    const char *argv[] = {"testcli", "pos", "testfile"};
+    EXPECT_TRUE(parser.parse(3, const_cast<char **>(argv)));
     EXPECT_TRUE(executed);
 }
 
-TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange) {
+TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange)
+{
     bool executed = false;
     parser.registerCommand("pos2")
         .positional<std::string>("name")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_THROW({
                 args.getPositional(10);
             }, exceptions::InvalidCommandSyntax);
             executed = true;
-            return true;
-        });
+            return true; });
 
-    const char* argv[] = {"testcli", "pos2", "testfile"};
-    parser.parse(3, const_cast<char**>(argv));
+    const char *argv[] = {"testcli", "pos2", "testfile"};
+    parser.parse(3, const_cast<char **>(argv));
     EXPECT_TRUE(executed);
 }
 
@@ -195,29 +202,31 @@ TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange) {
 // Quoted String Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, ParseQuotedString) {
+TEST_F(CmdParserTest, ParseQuotedString)
+{
     bool executed = false;
     parser.registerCommand("quote")
         .argument<std::string>("-m")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.get<std::string>("-m"), "hello world");
             executed = true;
-            return true;
-        });
+            return true; });
 
     EXPECT_TRUE(parser.parse("quote -m \"hello world\""));
     EXPECT_TRUE(executed);
 }
 
-TEST_F(CmdParserTest, ParseSingleQuotedString) {
+TEST_F(CmdParserTest, ParseSingleQuotedString)
+{
     bool executed = false;
     parser.registerCommand("quote2")
         .argument<std::string>("-m")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.get<std::string>("-m"), "single quoted");
             executed = true;
-            return true;
-        });
+            return true; });
 
     EXPECT_TRUE(parser.parse("quote2 -m 'single quoted'"));
     EXPECT_TRUE(executed);
@@ -227,20 +236,21 @@ TEST_F(CmdParserTest, ParseSingleQuotedString) {
 // Command Alias Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, ParseViaAlias) {
+TEST_F(CmdParserTest, ParseViaAlias)
+{
     bool executed = false;
     parser.registerCommand("aliastest")
         .argument<std::string>("-n")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.get<std::string>("-n"), "via_alias");
             executed = true;
-            return true;
-        });
+            return true; });
 
     parser.registerAlias("at", "aliastest");
-    
-    const char* argv[] = {"testcli", "at", "-n", "via_alias"};
-    EXPECT_TRUE(parser.parse(4, const_cast<char**>(argv)));
+
+    const char *argv[] = {"testcli", "at", "-n", "via_alias"};
+    EXPECT_TRUE(parser.parse(4, const_cast<char **>(argv)));
     EXPECT_TRUE(executed);
 }
 
@@ -248,37 +258,36 @@ TEST_F(CmdParserTest, ParseViaAlias) {
 // Exception Tests
 // ============================================================================
 
-TEST_F(CmdParserTest, DuplicateCommandException) {
+TEST_F(CmdParserTest, DuplicateCommandException)
+{
     CommandParser p("test");
     p.registerCommand("cmd");
-    EXPECT_THROW({
-        p.registerCommand("cmd");
-    }, exceptions::DuplicateCommand);
+    EXPECT_THROW({ p.registerCommand("cmd"); }, exceptions::DuplicateCommand);
 }
 
-TEST_F(CmdParserTest, UnknownCommandException) {
+TEST_F(CmdParserTest, UnknownCommandException)
+{
     CommandParser p("test");
-    const char* argv[] = {"test", "unknown"};
-    EXPECT_THROW({
-        p.parse(2, const_cast<char**>(argv));
-    }, exceptions::UnknownCommand);
+    const char *argv[] = {"test", "unknown"};
+    EXPECT_THROW({ p.parse(2, const_cast<char **>(argv)); }, exceptions::UnknownCommand);
 }
 
-TEST_F(CmdParserTest, ArgumentTypeMismatch) {
+TEST_F(CmdParserTest, ArgumentTypeMismatch)
+{
     bool executed = false;
     parser.registerCommand("typecheck")
         .argument<int>("-num")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             // Try to get as wrong type
             EXPECT_THROW({
                 args.get<std::string>("-num");
             }, exceptions::ArgumentTypeMismatch);
             executed = true;
-            return true;
-        });
+            return true; });
 
-    const char* argv[] = {"testcli", "typecheck", "-num", "42"};
-    parser.parse(4, const_cast<char**>(argv));
+    const char *argv[] = {"testcli", "typecheck", "-num", "42"};
+    parser.parse(4, const_cast<char **>(argv));
     EXPECT_TRUE(executed);
 }
 
@@ -286,36 +295,41 @@ TEST_F(CmdParserTest, ArgumentTypeMismatch) {
 // ArgumentValue Tests
 // ============================================================================
 
-TEST(ArgumentValueTest, DefaultConstruction) {
+TEST(ArgumentValueTest, DefaultConstruction)
+{
     ArgumentValue av;
     EXPECT_TRUE(av.isEmpty());
 }
 
-TEST(ArgumentValueTest, StringConstruction) {
+TEST(ArgumentValueTest, StringConstruction)
+{
     ArgumentValue av(std::string("test"));
     EXPECT_FALSE(av.isEmpty());
     EXPECT_EQ(av.as<std::string>(), "test");
     EXPECT_EQ(av.toString(), "test");
 }
 
-TEST(ArgumentValueTest, IntConstruction) {
+TEST(ArgumentValueTest, IntConstruction)
+{
     ArgumentValue av(42);
     EXPECT_FALSE(av.isEmpty());
     EXPECT_EQ(av.as<int>(), 42);
 }
 
-TEST(ArgumentValueTest, MoveConstruction) {
+TEST(ArgumentValueTest, MoveConstruction)
+{
     ArgumentValue av1(std::string("move_test"));
     ArgumentValue av2(std::move(av1));
-    
+
     EXPECT_TRUE(av1.isEmpty());
     EXPECT_EQ(av2.as<std::string>(), "move_test");
 }
 
-TEST(ArgumentValueTest, TypeQuery) {
+TEST(ArgumentValueTest, TypeQuery)
+{
     ArgumentValue intAv(100);
     ArgumentValue strAv(std::string("test"));
-    
+
     EXPECT_EQ(intAv.type(), std::type_index(typeid(int)));
     EXPECT_EQ(strAv.type(), std::type_index(typeid(std::string)));
 }
@@ -324,29 +338,32 @@ TEST(ArgumentValueTest, TypeQuery) {
 // CommandArgument Tests
 // ============================================================================
 
-TEST(CommandArgumentTest, SetAndGet) {
+TEST(CommandArgumentTest, SetAndGet)
+{
     CommandArgument args;
     args.set("name", std::string("John"));
-    
+
     EXPECT_TRUE(args.has("name"));
     EXPECT_EQ(args.get<std::string>("name"), "John");
 }
 
-TEST(CommandArgumentTest, AddPositional) {
+TEST(CommandArgumentTest, AddPositional)
+{
     CommandArgument args;
     args.addPositional("first");
     args.addPositional("second");
-    
+
     EXPECT_EQ(args.positionalCount(), 2);
     EXPECT_EQ(args.getPositional(0), "first");
     EXPECT_EQ(args.getPositional(1), "second");
 }
 
-TEST(CommandArgumentTest, GetArgumentNames) {
+TEST(CommandArgumentTest, GetArgumentNames)
+{
     CommandArgument args;
     args.set("a", std::string("1"));
     args.set("b", std::string("2"));
-    
+
     auto names = args.getArgumentNames();
     EXPECT_EQ(names.size(), 2);
 }
@@ -355,65 +372,155 @@ TEST(CommandArgumentTest, GetArgumentNames) {
 // Integration Tests
 // ============================================================================
 
-TEST(IntegrationTest, FullWorkflow) {
+TEST(IntegrationTest, FullWorkflow)
+{
     CommandParser parser("git");
     std::string expectedCommitMessage = "Initial commit";
-    
+
     // Register commit command
     parser.registerCommand("commit")
         .description("Commit changes")
         .argument<std::string>("-m")
         .argumentFlag<bool>("-a")
-        .execute([&expectedCommitMessage](CommandArgument& args) -> bool {
+        .execute([&expectedCommitMessage](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.get<std::string>("-m"), expectedCommitMessage);
             EXPECT_FALSE(args.has("-a"));
-            return true;
-        });
-    
+            return true; });
+
     // Register push command
     parser.registerCommand("push")
         .description("Push changes")
         .argumentFlag<bool>("--force")
         .positional<std::string>("branch")
-        .execute([](CommandArgument& args) -> bool {
+        .execute([](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.getPositional(0), "main");
             EXPECT_TRUE(args.has("--force"));
-            return true;
-        });
-    
+            return true; });
+
     // Test commit
     EXPECT_TRUE(parser.parse("commit -m \"Initial commit\""));
-    
+
     // Test push with force
     EXPECT_TRUE(parser.parse("push --force main"));
-    
+
     // Test alias
     expectedCommitMessage = "Quick fix";
     parser.registerAlias("ci", "commit");
     EXPECT_TRUE(parser.parse("ci -m \"Quick fix\""));
 }
 
-TEST(IntegrationTest, ShellCommandParsing) {
+TEST(IntegrationTest, ShellCommandParsing)
+{
     CommandParser parser("shell");
-    
+
     bool executed = false;
     parser.registerCommand("run")
         .argument<std::string>("-c")
-        .execute([&executed](CommandArgument& args) -> bool {
+        .execute([&executed](CommandArgument &args) -> bool
+                 {
             EXPECT_EQ(args.get<std::string>("-c"), "echo hello world");
             executed = true;
-            return true;
-        });
-    
+            return true; });
+
     EXPECT_TRUE(parser.parse("run -c \"echo hello world\""));
     EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// ShortOption Tests
+// ============================================================================
+
+TEST(ShortOptionTest, ExpandShortOptions) {
+    CommandParser parser("shorttest");
+    bool executed = false;
+    parser.registerCommand("test")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argumentFlag<bool>("-c")
+        .execute([&executed](CommandArgument &args) -> bool
+        {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            executed = true;
+            return true; 
+    });
+    EXPECT_TRUE(parser.parse("test -abc"));
+    EXPECT_TRUE(executed);
+}
+
+TEST(ShortOptionTest, ExpandShortOptionsWithStringArgument) {
+    CommandParser parser("shorttest2");
+    bool executed = false;
+    parser.registerCommand("test")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argument<std::string>("-c")
+        .execute([&executed](CommandArgument &args) -> bool
+        {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_EQ(args.get<std::string>("-c"), "Short Option Expand Test");
+            executed = true;
+            return true; 
+    });
+    EXPECT_TRUE(parser.parse("test -abc \"Short Option Expand Test\""));
+    EXPECT_TRUE(executed);
+}
+
+TEST(ShortOptionTest, ExpandShortOptionsWithIntArgument) {
+    CommandParser parser("shorttest2");
+    bool executed = false;
+    parser.registerCommand("test")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argument<int>("-c")
+        .execute([&executed](CommandArgument &args) -> bool
+        {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_EQ(args.get<int>("-c"), 114514);
+            executed = true;
+            return true; 
+    });
+    EXPECT_TRUE(parser.parse("test -bac 114514"));
+    EXPECT_TRUE(parser.parse("test -abc114514"));
+    EXPECT_TRUE(parser.parse("test -c114514 -ba"));
+    EXPECT_TRUE(executed);
+}
+
+TEST(ShortOptionTest, ExpandShortOptionWithAppendedValue) {
+    CommandParser parser("system");
+    std::string expectedUserName = "amy";
+    bool expectedInteractive = false;
+    parser.registerCommand("login")
+        .argument<std::string>("-u")
+        .argumentFlag<bool>("-i")
+        .execute([&expectedUserName, &expectedInteractive](CommandArgument &args) -> bool
+        {
+            EXPECT_TRUE(args.has("-u"));
+            EXPECT_EQ(args.has("-i"), expectedInteractive);
+            EXPECT_EQ(args.get<std::string>("-u"), expectedUserName);
+            return true;
+        });
+    EXPECT_TRUE(parser.parse("login -uamy"));
+    expectedInteractive = true;
+    EXPECT_TRUE(parser.parse("login -iuamy"));
+    expectedInteractive = false;
+    expectedUserName = "admin_user_123";
+    EXPECT_TRUE(parser.parse("login -uadmin_user_123"));
 }
 
 // ============================================================================
 // Main
 // ============================================================================
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

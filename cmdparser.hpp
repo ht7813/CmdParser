@@ -479,31 +479,8 @@ private:
 
             // 检查是否是标志参数（以 - 或 -- 开头）
             if (token.size() > 1 && (token[0] == '-' || token[0] == '/')) {
-                // 检查是否所有字符都是字母（短选项如 -abc 可能展开）
-                if (token[0] == '-' && token.size() > 2 && token[1] != '-') {
-                    // 短选项展开：-abc 变成 -a -b -c
-                    bool handled = false;
-                    for (size_t j = 1; j < token.size(); j++) {
-                        std::string flagName = std::string("-") + token[j];
-                        const auto* argDef = findArgDef(flagName);
-                        if (argDef != nullptr) {
-                            if (argDef->type == typeid(bool)) {
-                                args.set(argDef->name, true);
-                            } else {
-                                currentArgName = argDef->name;
-                                expectValue = true;
-                            }
-                            handled = true;
-                        } else {
-                            args.addPositional(token);
-                        }
-                    }
-                    if (handled) {
-                        continue;
-                    }
-                }
-
                 const auto* argDef = findArgDef(token);
+
                 if (argDef != nullptr) {
                     if (argDef->type == typeid(bool)) {
                         args.set(argDef->name, true);
@@ -516,6 +493,51 @@ private:
                         i++; // 跳过值
                     } else if (!argDef->isOptional) {
                         throw exceptions::MissingRequiredArgument(argDef->name);
+                    }
+                } else if (token[0] == '-' && token.size() > 2 && token[1] != '-') {
+                    // 短选项展开：-abc 变成 -a -b -c，但如果某个短选项需要值，
+                    // 则优先把后缀内容当成该选项的值（如 -uamy）
+                    bool handled = false;
+                    for (size_t j = 1; j < token.size(); j++) {
+                        std::string flagName = std::string("-") + token[j];
+                        const auto* shortArgDef = findArgDef(flagName);
+                        if (shortArgDef == nullptr) {
+                            args.addPositional(token);
+                            handled = true;
+                            break;
+                        }
+
+                        if (shortArgDef->type == typeid(bool)) {
+                            args.set(shortArgDef->name, true);
+                            continue;
+                        }
+
+                        if (j + 1 < token.size()) {
+                            const std::string value = token.substr(j + 1);
+                            if (shortArgDef->type == typeid(int)) {
+                                args.set(shortArgDef->name, std::stoi(value));
+                            } else {
+                                args.set(shortArgDef->name, ArgumentValue(value));
+                            }
+                            handled = true;
+                            break;
+                        }
+
+                        if (i + 1 < tokens.size() && !tokens[i + 1].empty() && tokens[i + 1][0] != '-') {
+                            if (shortArgDef->type == typeid(int)) {
+                                args.set(shortArgDef->name, std::stoi(tokens[i + 1]));
+                            } else {
+                                args.set(shortArgDef->name, ArgumentValue(tokens[i + 1]));
+                            }
+                            i++;
+                        } else if (!shortArgDef->isOptional) {
+                            throw exceptions::MissingRequiredArgument(shortArgDef->name);
+                        }
+                        handled = true;
+                        break;
+                    }
+                    if (!handled) {
+                        args.addPositional(token);
                     }
                 } else {
                     // 未知标志，作为位置参数
