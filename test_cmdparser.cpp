@@ -108,7 +108,7 @@ protected:
 
     void SetUp() override {
         parser.registerCommand("capture")
-            .argument<std::string>("-s")
+            .argumentOptional<std::string>("-s")
             .argumentFlag<bool>("-f")
             .execute([this](CommandArgument& args) -> bool {
                 if (args.has("-s")) {
@@ -357,14 +357,15 @@ TEST(CommandArgumentTest, GetArgumentNames) {
 
 TEST(IntegrationTest, FullWorkflow) {
     CommandParser parser("git");
+    std::string expectedCommitMessage = "Initial commit";
     
     // Register commit command
     parser.registerCommand("commit")
         .description("Commit changes")
         .argument<std::string>("-m")
         .argumentFlag<bool>("-a")
-        .execute([](CommandArgument& args) -> bool {
-            EXPECT_EQ(args.get<std::string>("-m"), "Initial commit");
+        .execute([&expectedCommitMessage](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("-m"), expectedCommitMessage);
             EXPECT_FALSE(args.has("-a"));
             return true;
         });
@@ -387,6 +388,7 @@ TEST(IntegrationTest, FullWorkflow) {
     EXPECT_TRUE(parser.parse("push --force main"));
     
     // Test alias
+    expectedCommitMessage = "Quick fix";
     parser.registerAlias("ci", "commit");
     EXPECT_TRUE(parser.parse("ci -m \"Quick fix\""));
 }

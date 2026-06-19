@@ -445,16 +445,33 @@ private:
         std::string currentArgName;
         bool expectValue = false;
 
+        auto findArgDef = [&](const std::string& name) -> const Command::ArgumentDef* {
+            for (const auto& argDef : cmd->getArguments()) {
+                if (argDef.name == name ||
+                    std::find(argDef.aliases.begin(), argDef.aliases.end(), name) != argDef.aliases.end()) {
+                    return &argDef;
+                }
+            }
+            return nullptr;
+        };
+
         for (size_t i = 1; i < tokens.size(); i++) {
             const std::string& token = tokens[i];
 
             if (expectValue) {
-                // 读取参数值
                 if (token.empty()) {
                     throw exceptions::InvalidCommandSyntax("Empty value for argument: " + currentArgName);
                 }
-                // 根据类型存储值（简化：都存为字符串，类型转换在get时进行）
-                args.set(currentArgName, ArgumentValue(token));
+
+                const auto* argDef = findArgDef(currentArgName);
+                if (argDef && argDef->type == typeid(int)) {
+                    args.set(currentArgName, std::stoi(token));
+                } else if (argDef && argDef->type == typeid(bool)) {
+                    args.set(currentArgName, true);
+                } else {
+                    args.set(currentArgName, ArgumentValue(token));
+                }
+
                 expectValue = false;
                 currentArgName.clear();
                 continue;
@@ -465,45 +482,42 @@ private:
                 // 检查是否所有字符都是字母（短选项如 -abc 可能展开）
                 if (token[0] == '-' && token.size() > 2 && token[1] != '-') {
                     // 短选项展开：-abc 变成 -a -b -c
+                    bool handled = false;
                     for (size_t j = 1; j < token.size(); j++) {
                         std::string flagName = std::string("-") + token[j];
-                        // 查找是否存在该标志
-                        bool found = false;
-                        for (const auto& argDef : cmd->getArguments()) {
-                            if (argDef.name == flagName || 
-                                std::find(argDef.aliases.begin(), argDef.aliases.end(), flagName) != argDef.aliases.end()) {
-                                // 处理标志
-                                args.set(argDef.name, ArgumentValue(true));
-                                found = true;
-                                break;
+                        const auto* argDef = findArgDef(flagName);
+                        if (argDef != nullptr) {
+                            if (argDef->type == typeid(bool)) {
+                                args.set(argDef->name, true);
+                            } else {
+                                currentArgName = argDef->name;
+                                expectValue = true;
                             }
-                        }
-                        if (!found) {
-                            // 当作位置参数
+                            handled = true;
+                        } else {
                             args.addPositional(token);
                         }
                     }
-                    continue;
-                }
-
-                // 查找参数定义
-                bool found = false;
-                for (const auto& argDef : cmd->getArguments()) {
-                    if (argDef.name == token || 
-                        std::find(argDef.aliases.begin(), argDef.aliases.end(), token) != argDef.aliases.end()) {
-                        // 检查下一个token是否是值
-                        if (i + 1 < tokens.size() && tokens[i + 1][0] != '-') {
-                            args.set(argDef.name, ArgumentValue(tokens[i + 1]));
-                            i++; // 跳过值
-                        } else {
-                            // 布尔标志
-                            args.set(argDef.name, ArgumentValue(true));
-                        }
-                        found = true;
-                        break;
+                    if (handled) {
+                        continue;
                     }
                 }
-                if (!found) {
+
+                const auto* argDef = findArgDef(token);
+                if (argDef != nullptr) {
+                    if (argDef->type == typeid(bool)) {
+                        args.set(argDef->name, true);
+                    } else if (i + 1 < tokens.size() && !tokens[i + 1].empty() && tokens[i + 1][0] != '-') {
+                        if (argDef->type == typeid(int)) {
+                            args.set(argDef->name, std::stoi(tokens[i + 1]));
+                        } else {
+                            args.set(argDef->name, ArgumentValue(tokens[i + 1]));
+                        }
+                        i++; // 跳过值
+                    } else if (!argDef->isOptional) {
+                        throw exceptions::MissingRequiredArgument(argDef->name);
+                    }
+                } else {
                     // 未知标志，作为位置参数
                     args.addPositional(token);
                 }
