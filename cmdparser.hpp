@@ -73,6 +73,60 @@ public:
 } // namespace exceptions
 
 // ============================================================================
+// 类型转换辅助
+// ============================================================================
+namespace type_conversion {
+
+template<typename T>
+T parseValue(const std::string& str) {
+    std::stringstream ss(str);
+    T value;
+    ss >> value;
+    if (ss.fail() || !ss.eof()) {
+        throw exceptions::InvalidCommandSyntax("Failed to convert '" + str + "' to requested type");
+    }
+    return value;
+}
+
+// 获取类型对应的默认值（用于解析失败时的回退）
+template<typename T>
+struct DefaultValue {
+    static T get() { return T{}; }
+};
+
+template<>
+struct DefaultValue<bool> {
+    static bool get() { return false; }
+};
+
+template<>
+struct DefaultValue<int> {
+    static int get() { return 0; }
+};
+
+template<>
+struct DefaultValue<long> {
+    static long get() { return 0L; }
+};
+
+template<>
+struct DefaultValue<float> {
+    static float get() { return 0.0f; }
+};
+
+template<>
+struct DefaultValue<double> {
+    static double get() { return 0.0; }
+};
+
+template<>
+struct DefaultValue<std::string> {
+    static std::string get() { return ""; }
+};
+
+} // namespace type_conversion
+
+// ============================================================================
 // 类型擦除的值存储（用于支持任意类型参数）
 // ============================================================================
 class ArgumentValue {
@@ -81,10 +135,94 @@ private:
     void* data_;
     std::function<void(void*)> deleter_;
     std::function<std::string(const void*)> toString_;
+    std::string rawString_;
+    bool isLazy_ = false;
+
+    template<typename T>
+    static void* convertFromString(const std::string& str) {
+        return new T(type_conversion::parseValue<T>(str));
+    }
+
+    // 类型转换函数表
+    using ConverterFunc = void*(*)(const std::string&);
+    static ConverterFunc getConverter(const std::type_index& type) {
+        static std::unordered_map<std::type_index, ConverterFunc> converters = {
+            {std::type_index(typeid(int)), convertFromString<int>},
+            {std::type_index(typeid(long)), convertFromString<long>},
+            {std::type_index(typeid(long long)), convertFromString<long long>},
+            {std::type_index(typeid(unsigned int)), convertFromString<unsigned int>},
+            {std::type_index(typeid(unsigned long)), convertFromString<unsigned long>},
+            {std::type_index(typeid(float)), convertFromString<float>},
+            {std::type_index(typeid(double)), convertFromString<double>},
+            {std::type_index(typeid(long double)), convertFromString<long double>},
+            {std::type_index(typeid(std::string)), [](const std::string& str) -> void* {
+                return new std::string(str);
+            }},
+        };
+        auto it = converters.find(type);
+        if (it != converters.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    void setupDeleterAndToString() {
+        if (type_ == typeid(int)) {
+            deleter_ = [](void* p) { delete static_cast<int*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const int*>(p));
+            };
+        } else if (type_ == typeid(bool)) {
+            deleter_ = [](void* p) { delete static_cast<bool*>(p); };
+            toString_ = [](const void* p) {
+                return *static_cast<const bool*>(p) ? "true" : "false";
+            };
+        } else if (type_ == typeid(float)) {
+            deleter_ = [](void* p) { delete static_cast<float*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const float*>(p));
+            };
+        } else if (type_ == typeid(double)) {
+            deleter_ = [](void* p) { delete static_cast<double*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const double*>(p));
+            };
+        } else if (type_ == typeid(long)) {
+            deleter_ = [](void* p) { delete static_cast<long*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const long*>(p));
+            };
+        } else if (type_ == typeid(long long)) {
+            deleter_ = [](void* p) { delete static_cast<long long*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const long long*>(p));
+            };
+        } else if (type_ == typeid(unsigned int)) {
+            deleter_ = [](void* p) { delete static_cast<unsigned int*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const unsigned int*>(p));
+            };
+        } else if (type_ == typeid(unsigned long)) {
+            deleter_ = [](void* p) { delete static_cast<unsigned long*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const unsigned long*>(p));
+            };
+        } else if (type_ == typeid(long double)) {
+            deleter_ = [](void* p) { delete static_cast<long double*>(p); };
+            toString_ = [](const void* p) {
+                return std::to_string(*static_cast<const long double*>(p));
+            };
+        } else if (type_ == typeid(std::string)) {
+            deleter_ = [](void* p) { delete static_cast<std::string*>(p); };
+            toString_ = [](const void* p) {
+                return *static_cast<const std::string*>(p);
+            };
+        }
+    }
 
 public:
     // 默认构造（空值）
-    ArgumentValue() : type_(typeid(void)), data_(nullptr), deleter_(nullptr), toString_(nullptr) {}
+    ArgumentValue() : type_(typeid(void)), data_(nullptr), deleter_(nullptr), toString_(nullptr), isLazy_(false) {}
 
     template<typename T>
     explicit ArgumentValue(const T& value)
@@ -95,7 +233,30 @@ public:
             std::stringstream ss;
             ss << *static_cast<const T*>(p);
             return ss.str();
-        }) {}
+        })
+        , isLazy_(false) {}
+    
+    explicit ArgumentValue(const std::string& str)
+        : type_(typeid(std::string))  // 默认存储为字符串
+        , data_(new std::string(str))
+        , deleter_([](void* p) { delete static_cast<std::string*>(p); })
+        , toString_([](const void* p) {
+            return *static_cast<const std::string*>(p);
+        })
+        , rawString_(str)
+        , isLazy_(true) {}
+
+    // 新增：从字符串构造，指定目标类型（立即转换或延迟）
+    ArgumentValue(const std::string& str, const std::type_index& targetType)
+        : type_(targetType)
+        , data_(nullptr)
+        , deleter_(nullptr)
+        , toString_(nullptr)
+        , rawString_(str)
+        , isLazy_(true) {
+        // 尝试立即转换
+        convertLazy();
+    }
 
     ~ArgumentValue() {
         if (deleter_ && data_) {
@@ -126,6 +287,7 @@ public:
         , toString_(std::move(other.toString_)) {
         other.data_ = nullptr;
         other.deleter_ = nullptr;
+	other.isLazy_ = false;
     }
 
     // 拷贝赋值（删除）
@@ -144,12 +306,41 @@ public:
             toString_ = std::move(other.toString_);
             other.data_ = nullptr;
             other.deleter_ = nullptr;
+	    other.isLazy_ = false;
         }
         return *this;
     }
 
+    void convertLazy() {
+        if (!isLazy_) {
+            return;
+        }
+
+        // 如果已经转换过了，跳过
+        if (data_ != nullptr && type_ != typeid(std::string)) {
+            return;
+        }
+
+        auto converter = getConverter(type_);
+        if (converter) {
+            // 释放旧的字符串数据
+            if (deleter_ && data_) {
+                deleter_(data_);
+            }
+            // 执行转换
+            data_ = converter(rawString_);
+            // 设置对应的 deleter 和 toString
+            setupDeleterAndToString();
+            isLazy_ = false;
+        }
+    }
+
     template<typename T>
     const T& as() const {
+        // 如果是延迟转换，先执行转换（const_cast 用于调用非 const 方法）
+        if (isLazy_) {
+            const_cast<ArgumentValue*>(this)->convertLazy();
+        }
         if (type_ != typeid(T)) {
             throw exceptions::ArgumentTypeMismatch("Cannot cast argument to requested type");
         }
@@ -157,6 +348,9 @@ public:
     }
 
     std::string toString() const {
+        if (isLazy_) {
+            return rawString_;
+        }
         if (toString_ && data_) {
             return toString_(data_);
         }
@@ -165,6 +359,18 @@ public:
 
     std::type_index type() const { return type_; }
     bool isEmpty() const { return data_ == nullptr; }
+    bool isLazy() const {return isLazy_; }
+
+    void setTargetType(const std::type_info& type) {
+	if (isLazy_ && type_ != type) {
+	    type_ = type;
+	    if (data_ && deleter_) {
+		deleter_(data_);
+		data_ = nullptr;
+	    }
+	    convertLazy();
+	}
+    }
 };
 
 // ============================================================================
@@ -192,8 +398,13 @@ public:
         args_.emplace(name, std::move(value));
     }
 
-        template<typename T>
+    template<typename T>
     void set(const std::string& name, const T& value) {
+        args_.erase(name);
+        args_.emplace(name, ArgumentValue(value));
+    }
+
+    void set(const std::string& name, const std::string& value) {
         args_.erase(name);
         args_.emplace(name, ArgumentValue(value));
     }
@@ -275,6 +486,12 @@ public:
         std::string defaultValue;
         std::string description;
         std::vector<std::string> aliases; // 可选：短选项别名
+	
+	ArgumentDef()
+        : name("")
+        , type(typeid(void))
+        , isPositional(false)
+        , isOptional(true) {}
 
         ArgumentDef(const std::string& n, const std::type_info& t, bool pos = false, bool opt = true)
             : name(n), type(t), isPositional(pos), isOptional(opt) {}
@@ -466,10 +683,8 @@ private:
                 }
 
                 const auto* argDef = findArgDef(currentArgName);
-                if (argDef && argDef->type == typeid(int)) {
-                    args.set(currentArgName, std::stoi(token));
-                } else if (argDef && argDef->type == typeid(bool)) {
-                    args.set(currentArgName, true);
+                if (argDef) {
+                    args.set(currentArgName, ArgumentValue(token, argDef->type));
                 } else {
                     args.set(currentArgName, ArgumentValue(token));
                 }
@@ -486,12 +701,8 @@ private:
                 if (argDef != nullptr) {
                     if (argDef->type == typeid(bool)) {
                         args.set(argDef->name, true);
-                    } else if (i + 1 < tokens.size() && !tokens[i + 1].empty() && tokens[i + 1][0] != '-') {
-                        if (argDef->type == typeid(int)) {
-                            args.set(argDef->name, std::stoi(tokens[i + 1]));
-                        } else {
-                            args.set(argDef->name, ArgumentValue(tokens[i + 1]));
-                        }
+                    } else if (i + 1 < tokens.size() && !tokens[i + 1].empty()) {
+                        args.set(argDef->name, ArgumentValue(tokens[i + 1], argDef->type));
                         i++; // 跳过值
                     } else if (!argDef->isOptional) {
                         throw exceptions::MissingRequiredArgument(argDef->name);
@@ -516,16 +727,12 @@ private:
 
                         if (j + 1 < token.size()) {
                             const std::string value = token.substr(j + 1);
-                            if (shortArgDef->type == typeid(int)) {
-                                args.set(shortArgDef->name, std::stoi(value));
-                            } else {
-                                args.set(shortArgDef->name, ArgumentValue(value));
-                            }
+                            args.set(shortArgDef->name, ArgumentValue(value, shortArgDef->type));
                             handled = true;
                             break;
                         }
 
-                        if (i + 1 < tokens.size() && !tokens[i + 1].empty() && tokens[i + 1][0] != '-') {
+                        if (i + 1 < tokens.size() && !tokens[i + 1].empty()) {
                             if (shortArgDef->type == typeid(int)) {
                                 args.set(shortArgDef->name, std::stoi(tokens[i + 1]));
                             } else {

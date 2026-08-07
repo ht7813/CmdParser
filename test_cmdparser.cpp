@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <sstream>
+#include <cmath>
 
 using namespace cmdparser;
 
@@ -556,6 +557,231 @@ TEST(ShortOptionTest, ExpandComplexShortOptionsWithMixedFlagsAndIntArgument) {
     });
 
     EXPECT_TRUE(parser.parse("test -abi 42 -cde"));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// 测试：类型自动转换
+// ============================================================================
+
+TEST(TypeConversionTest, ParseIntValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    int intValue = 0;
+
+    parser.registerCommand("test")
+        .argument<int>("-n")
+        .execute([&executed, &intValue](cmdparser::CommandArgument& args) -> bool {
+            intValue = args.get<int>("-n");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -n 42"));
+    EXPECT_EQ(intValue, 42);
+
+    EXPECT_TRUE(parser.parse("test -n -114514"));
+    EXPECT_EQ(intValue, -114514);
+
+    EXPECT_TRUE(parser.parse("test -n 0"));
+    EXPECT_EQ(intValue, 0);
+}
+
+TEST(TypeConversionTest, ParseLongValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    long longValue = 0;
+
+    parser.registerCommand("test")
+        .argument<long>("-l")
+        .execute([&executed, &longValue](cmdparser::CommandArgument& args) -> bool {
+            longValue = args.get<long>("-l");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -l 1234567890"));
+    EXPECT_EQ(longValue, 1234567890L);
+
+    EXPECT_TRUE(parser.parse("test -l -9876543210"));
+    EXPECT_EQ(longValue, -9876543210L);
+}
+
+TEST(TypeConversionTest, ParseFloatValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    float floatValue = 0.0f;
+
+    parser.registerCommand("test")
+        .argument<float>("-f")
+        .execute([&executed, &floatValue](cmdparser::CommandArgument& args) -> bool {
+            floatValue = args.get<float>("-f");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -f 3.14159"));
+    EXPECT_FLOAT_EQ(floatValue, 3.14159f);
+
+    EXPECT_TRUE(parser.parse("test -f -2.71828"));
+    EXPECT_FLOAT_EQ(floatValue, -2.71828f);
+
+    EXPECT_TRUE(parser.parse("test -f 1.0e-5"));
+    EXPECT_FLOAT_EQ(floatValue, 1.0e-5f);
+}
+
+TEST(TypeConversionTest, ParseDoubleValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    double doubleValue = 0.0;
+
+    parser.registerCommand("test")
+        .argument<double>("-d")
+        .execute([&executed, &doubleValue](cmdparser::CommandArgument& args) -> bool {
+            doubleValue = args.get<double>("-d");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -d 3.141592653589793"));
+    EXPECT_DOUBLE_EQ(doubleValue, 3.141592653589793);
+
+    EXPECT_TRUE(parser.parse("test -d -2.718281828459045"));
+    EXPECT_DOUBLE_EQ(doubleValue, -2.718281828459045);
+
+    EXPECT_TRUE(parser.parse("test -d 1.234e-10"));
+    EXPECT_DOUBLE_EQ(doubleValue, 1.234e-10);
+}
+
+TEST(TypeConversionTest, ParseMixedTypes) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    int intVal = 0;
+    float floatVal = 0.0f;
+    std::string strVal;
+    bool boolVal = false;
+
+    parser.registerCommand("test")
+        .argument<int>("-i")
+        .argument<float>("-f")
+        .argument<std::string>("-s")
+        .argumentFlag<bool>("-b")
+        .execute([&executed, &intVal, &floatVal, &strVal, &boolVal]
+                 (cmdparser::CommandArgument& args) -> bool {
+            intVal = args.get<int>("-i");
+            floatVal = args.get<float>("-f");
+            strVal = args.get<std::string>("-s");
+            boolVal = args.has("-b");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -i 42 -f 3.14 -s hello -b"));
+    EXPECT_EQ(intVal, 42);
+    EXPECT_FLOAT_EQ(floatVal, 3.14f);
+    EXPECT_EQ(strVal, "hello");
+    EXPECT_TRUE(boolVal);
+
+    EXPECT_TRUE(parser.parse("test -i -100 -f -0.001 -s world"));
+    EXPECT_EQ(intVal, -100);
+    EXPECT_FLOAT_EQ(floatVal, -0.001f);
+    EXPECT_EQ(strVal, "world");
+    EXPECT_FALSE(boolVal);
+}
+
+TEST(TypeConversionTest, InvalidConversionThrows) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+
+    parser.registerCommand("test")
+        .argument<int>("-i")
+        .execute([&executed](cmdparser::CommandArgument& args) -> bool {
+            // 不应该到达这里
+            executed = true;
+            return true;
+        });
+
+    // 无效的整数
+    EXPECT_THROW(parser.parse("test -i abc"), cmdparser::exceptions::InvalidCommandSyntax);
+
+    // 无效的浮点数
+    parser.registerCommand("test2")
+        .argument<float>("-f")
+        .execute([&executed](cmdparser::CommandArgument& args) -> bool {
+            executed = true;
+            return true;
+        });
+
+    EXPECT_THROW(parser.parse("test2 -f not-a-number"), cmdparser::exceptions::InvalidCommandSyntax);
+    EXPECT_THROW(parser.parse("test2 -f NaN"), cmdparser::exceptions::InvalidCommandSyntax);
+    EXPECT_THROW(parser.parse("test2 -f nullptr"), cmdparser::exceptions::InvalidCommandSyntax);
+}
+
+TEST(TypeConversionTest, ShortOptionWithAppendedTypeConversion) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    int intVal = 0;
+
+    parser.registerCommand("test")
+        .argument<int>("-n")
+        .argumentFlag<bool>("-v")
+        .execute([&executed, &intVal](cmdparser::CommandArgument& args) -> bool {
+            intVal = args.get<int>("-n");
+            EXPECT_TRUE(args.has("-v"));
+            executed = true;
+            return true;
+        });
+
+    // -vn42 展开为 -v (bool) + -n (int) 且值紧跟在后面
+    EXPECT_TRUE(parser.parse("test -vn42"));
+    EXPECT_EQ(intVal, 42);
+    EXPECT_TRUE(executed);
+
+    // 再次测试其他值
+    executed = false;
+    EXPECT_TRUE(parser.parse("test -vn -114514"));
+    EXPECT_EQ(intVal, -114514);
+    EXPECT_TRUE(executed);
+}
+
+TEST(TypeConversionTest, ShortOptionGroupWithMultipleTypes) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    bool flagA = false;
+    int intVal = 0;
+    float floatVal = 0.0f;
+    bool flagB = false;
+
+    parser.registerCommand("test")
+        .argumentFlag<bool>("-a")
+        .argument<int>("-i")
+        .argument<float>("-f")
+        .argumentFlag<bool>("-b")
+        .execute([&executed, &flagA, &intVal, &floatVal, &flagB]
+                 (cmdparser::CommandArgument& args) -> bool {
+            flagA = args.get<bool>("-a");
+            intVal = args.get<int>("-i");
+            floatVal = args.get<float>("-f");
+            flagB = args.has("-b");
+            executed = true;
+            return true;
+        });
+
+    // -aif3.14b 展开为 -a (bool) + -i (int) + -f (float) + -b (bool)
+    EXPECT_TRUE(parser.parse("test -ai42 -bf3.14"));
+    EXPECT_TRUE(flagA);
+    EXPECT_EQ(intVal, 42);
+    EXPECT_FLOAT_EQ(floatVal, 3.14f);
+    EXPECT_TRUE(flagB);
+    EXPECT_TRUE(executed);
+
+    // 测试负数
+    executed = false;
+    EXPECT_TRUE(parser.parse("test -ai-114514 -bf-2.718"));
+    EXPECT_TRUE(flagA);
+    EXPECT_EQ(intVal, -114514);
+    EXPECT_FLOAT_EQ(floatVal, -2.718f);
+    EXPECT_TRUE(flagB);
     EXPECT_TRUE(executed);
 }
 
