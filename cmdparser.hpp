@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <sstream>
 #include <cctype>
+#include <cmath>
 
 namespace cmdparser {
 
@@ -84,6 +85,11 @@ T parseValue(const std::string& str) {
     ss >> value;
     if (ss.fail() || !ss.eof()) {
         throw exceptions::InvalidCommandSyntax("Failed to convert '" + str + "' to requested type");
+    }
+    if constexpr (std::is_floating_point_v<T>) {
+        if (std::isnan(value) || std::isinf(value)) {
+            throw exceptions::InvalidCommandSyntax("Invalid floating point value: '" + str + "'");
+        }
     }
     return value;
 }
