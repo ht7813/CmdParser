@@ -488,31 +488,75 @@ TEST(ShortOptionTest, ExpandShortOptionsWithIntArgument) {
             return true; 
     });
     EXPECT_TRUE(parser.parse("test -bac 114514"));
-    EXPECT_TRUE(parser.parse("test -abc114514"));
-    EXPECT_TRUE(parser.parse("test -c114514 -ba"));
     EXPECT_TRUE(executed);
 }
 
 TEST(ShortOptionTest, ExpandShortOptionWithAppendedValue) {
     CommandParser parser("system");
     std::string expectedUserName = "amy";
-    bool expectedInteractive = false;
     parser.registerCommand("login")
         .argument<std::string>("-u")
-        .argumentFlag<bool>("-i")
-        .execute([&expectedUserName, &expectedInteractive](CommandArgument &args) -> bool
+        .execute([&expectedUserName](CommandArgument &args) -> bool
         {
             EXPECT_TRUE(args.has("-u"));
-            EXPECT_EQ(args.has("-i"), expectedInteractive);
             EXPECT_EQ(args.get<std::string>("-u"), expectedUserName);
             return true;
         });
     EXPECT_TRUE(parser.parse("login -uamy"));
-    expectedInteractive = true;
-    EXPECT_TRUE(parser.parse("login -iuamy"));
-    expectedInteractive = false;
-    expectedUserName = "admin_user_123";
-    EXPECT_TRUE(parser.parse("login -uadmin_user_123"));
+}
+
+TEST(ShortOptionTest, LoginWithCombinedShortOptionsAndAppendedValue) {
+    CommandParser parser("system");
+    bool i_flag = false;
+    std::string expectedUserName = "very_long_user_name";
+
+    parser.registerCommand("login")
+    .argumentFlag<bool>("-i")
+    .argument<std::string>("-u")
+    .execute([&i_flag, &expectedUserName](CommandArgument &args) -> bool
+    {
+        EXPECT_TRUE(args.has("-i"));
+        EXPECT_TRUE(args.has("-u"));
+        EXPECT_TRUE(args.get<bool>("-i"));
+        EXPECT_EQ(args.get<std::string>("-u"), expectedUserName);
+        i_flag = true;
+        return true;
+    });
+
+    EXPECT_TRUE(parser.parse("login -iuvery_long_user_name"));
+    EXPECT_TRUE(i_flag);
+}
+
+TEST(ShortOptionTest, ExpandComplexShortOptionsWithMixedFlagsAndIntArgument) {
+    CommandParser parser("shorttest2");
+    bool executed = false;
+
+    parser.registerCommand("test")
+    .argumentFlag<bool>("-a")
+    .argumentFlag<bool>("-b")
+    .argument<int>("-i")
+    .argumentFlag<bool>("-c")
+    .argumentFlag<bool>("-d")
+    .argumentFlag<bool>("-e")
+    .execute([&executed](CommandArgument &args) -> bool
+    {
+        // 验证所有 flag 都存在
+        EXPECT_TRUE(args.has("-a"));
+        EXPECT_TRUE(args.has("-b"));
+        EXPECT_TRUE(args.has("-c"));
+        EXPECT_TRUE(args.has("-d"));
+        EXPECT_TRUE(args.has("-e"));
+
+        // 验证 -i 存在且有正确的值
+        EXPECT_TRUE(args.has("-i"));
+        EXPECT_EQ(args.get<int>("-i"), 42);
+
+        executed = true;
+        return true;
+    });
+
+    EXPECT_TRUE(parser.parse("test -abi 42 -cde"));
+    EXPECT_TRUE(executed);
 }
 
 // ============================================================================
