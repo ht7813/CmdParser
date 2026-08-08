@@ -603,8 +603,71 @@ TEST(TypeConversionTest, ParseLongValues) {
     EXPECT_TRUE(parser.parse("test -l 1234567890"));
     EXPECT_EQ(longValue, 1234567890L);
 
-    EXPECT_TRUE(parser.parse("test -l -9876543210"));
-    EXPECT_EQ(longValue, -9876543210L);
+    // On some platform, long = 32-bit
+    EXPECT_TRUE(parser.parse("test -l -2147483647"));
+    EXPECT_EQ(longValue, -2147483647L);
+}
+
+TEST(TypeConversionTest, ParseUnsignedLongValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    unsigned long longValue = 0;
+
+    parser.registerCommand("test")
+        .argument<unsigned long>("-l")
+        .execute([&executed, &longValue](cmdparser::CommandArgument& args) -> bool {
+            longValue = args.get<unsigned long>("-l");
+            executed = true;
+            return true;
+        });
+
+    // On some platform, unsigned long = 32-bit (too)
+    EXPECT_TRUE(parser.parse("test -l 2147483650"));
+    EXPECT_EQ(longValue, 2147483650UL);
+
+    // Same as above
+    EXPECT_TRUE(parser.parse("test -l 4294967294"));
+    EXPECT_EQ(longValue, 4294967294UL);
+}
+
+TEST(TypeConversionTest, ParseLongLongValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    long long longValue = 0;
+
+    parser.registerCommand("test")
+        .argument<long long>("-l")
+        .execute([&executed, &longValue](cmdparser::CommandArgument& args) -> bool {
+            longValue = args.get<long long>("-l");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -l 999999999999"));
+    EXPECT_EQ(longValue, 999999999999LL);
+
+    EXPECT_TRUE(parser.parse("test -l -1999999999999"));
+    EXPECT_EQ(longValue, -1999999999999LL);
+}
+
+TEST(TypeConversionTest, ParseUnsignedLongLongValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    unsigned long long longValue = 0;
+
+    parser.registerCommand("test")
+        .argument<unsigned long long>("-l")
+        .execute([&executed, &longValue](cmdparser::CommandArgument& args) -> bool {
+            longValue = args.get<unsigned long long>("-l");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -l 9223372036854775999"));
+    EXPECT_EQ(longValue, 9223372036854775999ULL);
+
+    EXPECT_TRUE(parser.parse("test -l 18446744073709551614"));
+    EXPECT_EQ(longValue, 18446744073709551614ULL);
 }
 
 TEST(TypeConversionTest, ParseFloatValues) {
