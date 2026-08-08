@@ -849,6 +849,472 @@ TEST(TypeConversionTest, ShortOptionGroupWithMultipleTypes) {
 }
 
 // ============================================================================
+// 压力测试
+// ============================================================================
+
+class StressTest : public ::testing::Test
+{
+protected:
+    CommandParser parser{"stresscli"};
+
+    void SetUp() override
+    {
+        // 注册一个包含大量标志和少量带参数选项的命令
+        parser.registerCommand("stress")
+            .argumentFlag<bool>("-a")
+            .argumentFlag<bool>("-b")
+            .argumentFlag<bool>("-c")
+            .argumentFlag<bool>("-d")
+            .argumentFlag<bool>("-e")
+            .argumentFlag<bool>("-f")
+            .argumentFlag<bool>("-g")
+            .argumentFlag<bool>("-h")
+            .argument<int>("-i")          // i 需要参数
+            .argumentFlag<bool>("-j")
+            .argumentFlag<bool>("-k")
+            .argumentFlag<bool>("-l")
+            .argumentFlag<bool>("-m")
+            .argumentFlag<bool>("-n")
+            .argumentFlag<bool>("-o")
+            .argumentFlag<bool>("-p")
+            .argumentFlag<bool>("-q")
+            .argumentFlag<bool>("-r")
+            .argumentFlag<bool>("-s")
+            .argumentFlag<bool>("-t")
+            .argumentFlag<bool>("-u")
+            .argumentFlag<bool>("-v")
+            .argument<std::string>("-w")  // w 需要参数
+            .argumentFlag<bool>("-x")
+            .argumentFlag<bool>("-y")
+            .argumentFlag<bool>("-z")
+            .execute([](CommandArgument &args) -> bool {
+                // 验证所有标志
+                EXPECT_TRUE(args.has("-a"));
+                EXPECT_TRUE(args.has("-b"));
+                EXPECT_TRUE(args.has("-c"));
+                EXPECT_TRUE(args.has("-d"));
+                EXPECT_TRUE(args.has("-e"));
+                EXPECT_TRUE(args.has("-f"));
+                EXPECT_TRUE(args.has("-g"));
+                EXPECT_TRUE(args.has("-h"));
+                EXPECT_TRUE(args.has("-i"));
+                EXPECT_EQ(args.get<int>("-i"), 12345);
+                EXPECT_TRUE(args.has("-j"));
+                EXPECT_TRUE(args.has("-k"));
+                EXPECT_TRUE(args.has("-l"));
+                EXPECT_TRUE(args.has("-m"));
+                EXPECT_TRUE(args.has("-n"));
+                EXPECT_TRUE(args.has("-o"));
+                EXPECT_TRUE(args.has("-p"));
+                EXPECT_TRUE(args.has("-q"));
+                EXPECT_TRUE(args.has("-r"));
+                EXPECT_TRUE(args.has("-s"));
+                EXPECT_TRUE(args.has("-t"));
+                EXPECT_TRUE(args.has("-u"));
+                EXPECT_TRUE(args.has("-v"));
+                EXPECT_TRUE(args.has("-w"));
+                EXPECT_EQ(args.get<std::string>("-w"), "hello");
+                EXPECT_TRUE(args.has("-x"));
+                EXPECT_TRUE(args.has("-y"));
+                EXPECT_TRUE(args.has("-z"));
+                return true;
+            });
+    }
+};
+
+// 测试1：带参数选项使用追加值形式（-i12345 -whello）
+TEST_F(StressTest, ShortOptionsWithAppendedValues)
+{
+    // 像 GNU getopt 那样：-abcdefghi12345 -jklmnopqrstuvwhello -xyz
+    // i 的参数是 12345，w 的参数是 hello
+    EXPECT_TRUE(parser.parse("stress -abcdefghi12345 -jklmnopqrstuvwhello -xyz"));
+}
+
+// 测试2：带参数选项使用空格分隔
+TEST_F(StressTest, ShortOptionsWithSpaceSeparatedValues)
+{
+    EXPECT_TRUE(parser.parse("stress -abcdefgh -i 12345 -jklmnopqrstuv -w hello -xyz"));
+}
+
+// 测试3：短选项分组 + 追加值混合
+TEST_F(StressTest, MixedShortOptionGroups)
+{
+    EXPECT_TRUE(parser.parse("stress -abc -defghi12345 -jklmnopqrstuvwhello -xyz"));
+    EXPECT_TRUE(parser.parse("stress -abcdef -ghi12345 -jklmnopqrstuvwhello -xyz"));
+}
+
+// 测试4：只有标志，没有带参数选项
+TEST_F(StressTest, FlagsOnlyShortOptions)
+{
+    // 注册一个全部是标志的命令
+    parser.registerCommand("flags_only")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argumentFlag<bool>("-c")
+        .argumentFlag<bool>("-d")
+        .argumentFlag<bool>("-e")
+        .argumentFlag<bool>("-f")
+        .argumentFlag<bool>("-g")
+        .argumentFlag<bool>("-h")
+        .argumentFlag<bool>("-i")
+        .argumentFlag<bool>("-j")
+        .argumentFlag<bool>("-k")
+        .argumentFlag<bool>("-l")
+        .argumentFlag<bool>("-m")
+        .argumentFlag<bool>("-n")
+        .argumentFlag<bool>("-o")
+        .argumentFlag<bool>("-p")
+        .argumentFlag<bool>("-q")
+        .argumentFlag<bool>("-r")
+        .argumentFlag<bool>("-s")
+        .argumentFlag<bool>("-t")
+        .execute([](CommandArgument &args) -> bool {
+            // 验证所有标志
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_TRUE(args.has("-d"));
+            EXPECT_TRUE(args.has("-e"));
+            EXPECT_TRUE(args.has("-f"));
+            EXPECT_TRUE(args.has("-g"));
+            EXPECT_TRUE(args.has("-h"));
+            EXPECT_TRUE(args.has("-i"));
+            EXPECT_TRUE(args.has("-j"));
+            EXPECT_TRUE(args.has("-k"));
+            EXPECT_TRUE(args.has("-l"));
+            EXPECT_TRUE(args.has("-m"));
+            EXPECT_TRUE(args.has("-n"));
+            EXPECT_TRUE(args.has("-o"));
+            EXPECT_TRUE(args.has("-p"));
+            EXPECT_TRUE(args.has("-q"));
+            EXPECT_TRUE(args.has("-r"));
+            EXPECT_TRUE(args.has("-s"));
+            EXPECT_TRUE(args.has("-t"));
+            return true;
+        });
+
+    // 可以一口气展开所有标志（因为没有带参数的选项）
+    EXPECT_TRUE(parser.parse("flags_only -abcdefghijklmnopqrst"));
+}
+
+// ============================================================================
+// 压力测试：大量短选项的多种组合方式
+// ============================================================================
+
+TEST_F(StressTest, VariousShortOptionCombinations)
+{
+    // 各种合理的组合方式
+    EXPECT_TRUE(parser.parse("stress -abcdefghi12345 -jklmnopqrstuvwhello -xyz"));
+    EXPECT_TRUE(parser.parse("stress -abcdefghi12345 -jklmnopqrstuvwhello -xyz"));
+    EXPECT_TRUE(parser.parse("stress -abcdefgh -i12345 -jklmnopqrstuv -whello -xyz"));
+    EXPECT_TRUE(parser.parse("stress -abc -def -ghi12345 -jkl -mnopqrstuvwhello -xyz"));
+}
+
+// ============================================================================
+// 压力测试：大量参数（每个都带独立参数）
+// ============================================================================
+
+TEST_F(StressTest, ManyArgumentsWithValues)
+{
+    bool executed = false;
+    auto builder = parser.registerCommand("many_vals");
+    
+    // 20个带参数的短选项
+    for (int i = 0; i < 20; ++i) {
+        char c = 'a' + i;
+        std::string argName = "-" + std::string(1, c);
+        builder.argument<int>(argName);
+    }
+    
+    builder.execute([&executed](CommandArgument &args) -> bool {
+        for (int i = 0; i < 20; ++i) {
+            char c = 'a' + i;
+            std::string argName = "-" + std::string(1, c);
+            EXPECT_TRUE(args.has(argName));
+            EXPECT_EQ(args.get<int>(argName), i * 100);
+        }
+        executed = true;
+        return true;
+    });
+
+    // 每个选项独立指定（不能连写，因为每个都要参数）
+    std::string cmd = "many_vals";
+    for (int i = 0; i < 20; ++i) {
+        char c = 'a' + i;
+        cmd += " -" + std::string(1, c) + " " + std::to_string(i * 100);
+    }
+    
+    EXPECT_TRUE(parser.parse(cmd));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// 压力测试：混合标志和带参数选项（复杂场景）
+// ============================================================================
+
+TEST_F(StressTest, ComplexMixedFlagsAndValues)
+{
+    bool executed = false;
+    parser.registerCommand("complex")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argument<int>("-c")
+        .argumentFlag<bool>("-d")
+        .argumentFlag<bool>("-e")
+        .argument<std::string>("-f")
+        .argumentFlag<bool>("-g")
+        .argument<int>("-h")
+        .argumentFlag<bool>("-i")
+        .argumentFlag<bool>("-j")
+        .argumentFlag<bool>("-k")
+        .argument<std::string>("-l")
+        .argumentFlag<bool>("-m")
+        .execute([&executed](CommandArgument &args) -> bool {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_EQ(args.get<int>("-c"), 42);
+            EXPECT_TRUE(args.has("-d"));
+            EXPECT_TRUE(args.has("-e"));
+            EXPECT_TRUE(args.has("-f"));
+            EXPECT_EQ(args.get<std::string>("-f"), "hello");
+            EXPECT_TRUE(args.has("-g"));
+            EXPECT_TRUE(args.has("-h"));
+            EXPECT_EQ(args.get<int>("-h"), 100);
+            EXPECT_TRUE(args.has("-i"));
+            EXPECT_TRUE(args.has("-j"));
+            EXPECT_TRUE(args.has("-k"));
+            EXPECT_TRUE(args.has("-l"));
+            EXPECT_EQ(args.get<std::string>("-l"), "world");
+            EXPECT_TRUE(args.has("-m"));
+            executed = true;
+            return true;
+        });
+
+    // 合理的组合：带参数选项使用追加值或空格分隔
+    EXPECT_TRUE(parser.parse("complex -abc42 -defhello -gh100 -ijklworld -m"));
+    EXPECT_TRUE(parser.parse("complex -ab -c42 -de -fhello -g -h100 -ijk -lworld -m"));
+    EXPECT_TRUE(parser.parse("complex -a -b -c 42 -d -e -f hello -g -h 100 -i -j -k -l world -m"));
+}
+
+// ============================================================================
+// 压力测试：最多标志数量（全部是标志，没有参数）
+// ============================================================================
+
+TEST_F(StressTest, MaximumFlagsOnly)
+{
+    bool executed = false;
+    auto builder = parser.registerCommand("max_flags");
+    
+    std::string allFlags;
+    // 注册 52 个标志（a-z + A-Z）
+    for (int i = 0; i < 52; ++i) {
+        char c = (i < 26) ? ('a' + i) : ('A' + i - 26);
+        std::string flagName = "-" + std::string(1, c);
+        builder.argumentFlag<bool>(flagName);
+        allFlags += c;
+    }
+    
+    builder.execute([&executed, &allFlags](CommandArgument &args) -> bool {
+        for (char c : allFlags) {
+            std::string flagName = "-" + std::string(1, c);
+            EXPECT_TRUE(args.has(flagName));
+        }
+        executed = true;
+        return true;
+    });
+
+    // 一次性展开所有标志（因为都是标志，没有需要参数的）
+    std::string cmd = "max_flags -" + allFlags;
+    EXPECT_TRUE(parser.parse(cmd));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// 压力测试：重复解析大量命令
+// ============================================================================
+
+TEST_F(StressTest, RepeatedParsingStress)
+{
+    bool executed = false;
+    parser.registerCommand("repeat")
+        .argument<int>("-n")
+        .argument<std::string>("-s")
+        .execute([&executed](CommandArgument &args) -> bool {
+            EXPECT_TRUE(args.has("-n"));
+            EXPECT_TRUE(args.has("-s"));
+            executed = true;
+            return true;
+        });
+
+    // 连续解析 1000 次
+    for (int i = 0; i < 1000; ++i) {
+        executed = false;
+        std::string cmd = "repeat -n" + std::to_string(i) + " -stest_" + std::to_string(i);
+        EXPECT_TRUE(parser.parse(cmd));
+        EXPECT_TRUE(executed);
+    }
+}
+
+// ============================================================================
+// 压力测试：长选项和短选项混合
+// ============================================================================
+
+TEST_F(StressTest, MixedLongShortStress)
+{
+    bool executed = false;
+    parser.registerCommand("mix_stress")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("--flag-a")
+        .argument<int>("-b")
+        .argument<int>("--flag-b")
+        .argumentFlag<bool>("-c")
+        .argumentFlag<bool>("--flag-c")
+        .argument<std::string>("-d")
+        .argument<std::string>("--flag-d")
+        .argumentFlag<bool>("-e")
+        .argumentFlag<bool>("--flag-e")
+        .argument<double>("-f")
+        .argument<double>("--flag-f")
+        .execute([&executed](CommandArgument &args) -> bool {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("--flag-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_EQ(args.get<int>("-b"), 10);
+            EXPECT_TRUE(args.has("--flag-b"));
+            EXPECT_EQ(args.get<int>("--flag-b"), 20);
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_TRUE(args.has("--flag-c"));
+            EXPECT_TRUE(args.has("-d"));
+            EXPECT_EQ(args.get<std::string>("-d"), "short");
+            EXPECT_TRUE(args.has("--flag-d"));
+            EXPECT_EQ(args.get<std::string>("--flag-d"), "long");
+            EXPECT_TRUE(args.has("-e"));
+            EXPECT_TRUE(args.has("--flag-e"));
+            EXPECT_TRUE(args.has("-f"));
+            EXPECT_DOUBLE_EQ(args.get<double>("-f"), 1.1);
+            EXPECT_TRUE(args.has("--flag-f"));
+            EXPECT_DOUBLE_EQ(args.get<double>("--flag-f"), 2.2);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("mix_stress -a --flag-a -b10 --flag-b 20 -c --flag-c -dshort --flag-d long -e --flag-e -f1.1 --flag-f 2.2"));
+}
+
+// ============================================================================
+// 压力测试：大量命令别名
+// ============================================================================
+
+TEST_F(StressTest, ManyAliases)
+{
+    parser.registerCommand("base_cmd")
+        .argument<std::string>("-n")
+        .execute([](CommandArgument &args) -> bool {
+            EXPECT_EQ(args.get<std::string>("-n"), "test");
+            return true;
+        });
+
+    // 注册 100 个别名
+    for (int i = 0; i < 100; ++i) {
+        std::string alias = "a" + std::to_string(i);
+        EXPECT_NO_THROW({
+            parser.registerAlias(alias, "base_cmd");
+        });
+    }
+
+    // 测试所有别名
+    for (int i = 0; i < 100; ++i) {
+        std::string alias = "a" + std::to_string(i);
+        std::string cmd = alias + " -ntest";
+        EXPECT_TRUE(parser.parse(cmd));
+    }
+}
+
+// ============================================================================
+// 压力测试：超长命令行字符串
+// ============================================================================
+
+TEST_F(StressTest, VeryLongCommandLine)
+{
+    bool executed = false;
+    std::string longString(100000, 'x');  // 100KB 字符串
+    parser.registerCommand("long_arg")
+        .argument<std::string>("-s")
+        .execute([&executed, &longString](CommandArgument &args) -> bool {
+            EXPECT_EQ(args.get<std::string>("-s"), longString);
+            executed = true;
+            return true;
+        });
+
+    std::string cmd = "long_arg -s" + longString;
+    EXPECT_TRUE(parser.parse(cmd));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// 压力测试：位置参数和短选项混合
+// ============================================================================
+
+TEST_F(StressTest, PositionalsWithShortOptions)
+{
+    bool executed = false;
+    parser.registerCommand("pos_stress")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argument<int>("-c")
+        .argumentFlag<bool>("-d")
+        .argument<std::string>("-e")
+        .positional<std::string>("file1")
+        .positional<std::string>("num1")
+        .positionalOptional<std::string>("file2")
+        .execute([&executed](CommandArgument &args) -> bool {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_TRUE(args.has("-c"));
+            EXPECT_EQ(args.get<int>("-c"), 42);
+            EXPECT_TRUE(args.has("-d"));
+            EXPECT_TRUE(args.has("-e"));
+            EXPECT_EQ(args.get<std::string>("-e"), "hello");
+            EXPECT_EQ(args.getPositional(0), "input.txt");
+            EXPECT_EQ(args.getPositional(1), "123");
+            EXPECT_EQ(args.positionalCount(), 2);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("pos_stress -abc42 -dehello input.txt 123"));
+    EXPECT_TRUE(parser.parse("pos_stress input.txt -abc42 -d -ehello 123"));
+    EXPECT_TRUE(parser.parse("pos_stress -abc42 input.txt -dehello 123"));
+}
+
+// ============================================================================
+// 压力测试：特殊字符和 Unicode
+// ============================================================================
+
+TEST_F(StressTest, SpecialCharactersAndUnicode)
+{
+    bool executed = false;
+    std::string specialStr = "!@#$%^&*()_+-=[]{}|;:,.<>?/`~";
+    std::string unicodeStr = "你好世界 🌍 こんにちは 안녕하세요";
+    
+    parser.registerCommand("special_unicode")
+        .argument<std::string>("-s")
+        .argument<std::string>("-u")
+        .execute([&executed, &specialStr, &unicodeStr](CommandArgument &args) -> bool {
+            EXPECT_EQ(args.get<std::string>("-s"), specialStr);
+            EXPECT_EQ(args.get<std::string>("-u"), unicodeStr);
+            executed = true;
+            return true;
+        });
+
+    // 使用追加值形式，避免引号转义问题
+    std::string cmd = "special_unicode -s" + specialStr + " -u \"" + unicodeStr + "\"";
+    EXPECT_TRUE(parser.parse(cmd));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
