@@ -17,6 +17,16 @@
 #include <cctype>
 #include <cmath>
 
+// Internal Defines, DO NOT Use in user program
+#define __CMDPARSER_INTERNAL_CONVERTER_ITEM(T) {std::type_index(typeid(T)), convertFromString<T>},
+#define __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(T) \
+        else if (type_ == typeid(T)) { \
+            deleter_ = [](void* p) { delete static_cast<T*>(p); }; \
+            toString_ = [](const void* p) { \
+                return std::to_string(*static_cast<const T*>(p)); \
+            }; \
+        }
+
 namespace cmdparser {
 
 // 前置声明
@@ -153,14 +163,14 @@ private:
     using ConverterFunc = void*(*)(const std::string&);
     static ConverterFunc getConverter(const std::type_index& type) {
         static std::unordered_map<std::type_index, ConverterFunc> converters = {
-            {std::type_index(typeid(int)), convertFromString<int>},
-            {std::type_index(typeid(long)), convertFromString<long>},
-            {std::type_index(typeid(long long)), convertFromString<long long>},
-            {std::type_index(typeid(unsigned int)), convertFromString<unsigned int>},
-            {std::type_index(typeid(unsigned long)), convertFromString<unsigned long>},
-            {std::type_index(typeid(float)), convertFromString<float>},
-            {std::type_index(typeid(double)), convertFromString<double>},
-            {std::type_index(typeid(long double)), convertFromString<long double>},
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(int)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(long)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(long long)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(unsigned int)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(unsigned long)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(float)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(double)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(long double)
             {std::type_index(typeid(std::string)), [](const std::string& str) -> void* {
                 return new std::string(str);
             }},
@@ -173,57 +183,20 @@ private:
     }
 
     void setupDeleterAndToString() {
-        if (type_ == typeid(int)) {
-            deleter_ = [](void* p) { delete static_cast<int*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const int*>(p));
-            };
-        } else if (type_ == typeid(bool)) {
-            deleter_ = [](void* p) { delete static_cast<bool*>(p); };
-            toString_ = [](const void* p) {
-                return *static_cast<const bool*>(p) ? "true" : "false";
-            };
-        } else if (type_ == typeid(float)) {
-            deleter_ = [](void* p) { delete static_cast<float*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const float*>(p));
-            };
-        } else if (type_ == typeid(double)) {
-            deleter_ = [](void* p) { delete static_cast<double*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const double*>(p));
-            };
-        } else if (type_ == typeid(long)) {
-            deleter_ = [](void* p) { delete static_cast<long*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const long*>(p));
-            };
-        } else if (type_ == typeid(long long)) {
-            deleter_ = [](void* p) { delete static_cast<long long*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const long long*>(p));
-            };
-        } else if (type_ == typeid(unsigned int)) {
-            deleter_ = [](void* p) { delete static_cast<unsigned int*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const unsigned int*>(p));
-            };
-        } else if (type_ == typeid(unsigned long)) {
-            deleter_ = [](void* p) { delete static_cast<unsigned long*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const unsigned long*>(p));
-            };
-        } else if (type_ == typeid(long double)) {
-            deleter_ = [](void* p) { delete static_cast<long double*>(p); };
-            toString_ = [](const void* p) {
-                return std::to_string(*static_cast<const long double*>(p));
-            };
-        } else if (type_ == typeid(std::string)) {
+        if (type_ == typeid(std::string)) {
             deleter_ = [](void* p) { delete static_cast<std::string*>(p); };
             toString_ = [](const void* p) {
                 return *static_cast<const std::string*>(p);
             };
         }
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(int)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(long)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(long long)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(unsigned int)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(unsigned long)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(float)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(double)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(long double)
     }
 
 public:
