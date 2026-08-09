@@ -30,18 +30,27 @@ int main() {
         .positional<int>("a")
             .argDescription("First number")
         .positional<std::string>("op")
-            .argDescription("Operation (+, -, *, /)")
+            .argDescription("Operation (+, -, *, /, %)")
         .positional<int>("b")
             .argDescription("Second number")
         .execute([](CommandArgument& args) -> bool {
             int a = args.getPositional<int>(0);
             std::string op = args.getPositional<std::string>(1);
             int b = args.getPositional<int>(2);
+            if (op == "/" && b == 0) {
+                std::cerr << "Error: Division by zero!" << std::endl;
+                return false;
+            }
+            if (op == "%" && b == 0) {
+                std::cerr << "Error: Modulo by zero!" << std::endl;
+                return false;
+            }
             
             if (op == "+") std::cout << a + b << std::endl;
             else if (op == "-") std::cout << a - b << std::endl;
             else if (op == "*") std::cout << a * b << std::endl;
             else if (op == "/") std::cout << a / b << std::endl;
+            else if (op == "%") std::cout << a % b << std::endl;
             else {
                 std::cerr << "Unknown operation: " << op << std::endl;
                 return false;
