@@ -1,5 +1,22 @@
 # CmdParser
 
+> **🚀 v2 is now available!**
+> 
+> CmdParser v2 introduces major improvements including:
+> - Better API design (`.flag()` instead of `.argumentFlag<bool>`)
+> - POSIX `--` support
+> - Parameter aliases (`.alias()`)
+> - Default values (`.defaultValue()`)
+> - Variadic positional arguments (`...`)
+> - And more!
+>
+> **⚠️ v2 is NOT compatible with v1.**
+>
+> For new projects: Use v2
+> For existing projects: See [MIGRATION.md](https://github.com/ht7813/CmdParser/blob/v2/MIGRATION.md)
+>
+> [Switch to v2 branch](https://github.com/ht7813/CmdParser/tree/v2)
+
 A lightweight C++ CLI command parser library supporting subcommands, positional arguments, flag arguments, and type-safe parameter retrieval.
 
 ## Features
