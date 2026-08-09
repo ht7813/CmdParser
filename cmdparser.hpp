@@ -69,6 +69,18 @@ public:
         : InvalidCommandSyntax("Duplicate command: " + cmdName) {}
 };
 
+class DuplicateArgument : public InvalidCommandSyntax {
+public:
+    explicit DuplicateArgument(const std::string& cmdName)
+        : InvalidCommandSyntax("Duplicate argument: " + cmdName) {}
+};
+
+class DuplicateArgumentAlias : public InvalidCommandSyntax {
+public:
+    explicit DuplicateArgumentAlias(const std::string& aliasName, const std::string& argName)
+        : InvalidCommandSyntax("Duplicate alias " + aliasName + " for argument " + argName) {}
+};
+
 class ArgumentTypeMismatch : public InvalidCommandSyntax {
 public:
     explicit ArgumentTypeMismatch(const std::string& argName)
@@ -476,6 +488,11 @@ public:
 
         ArgumentDef(const std::string& n, const std::type_info& t, bool pos = false, bool opt = true)
             : name(n), type(t), isPositional(pos), isOptional(opt) {}
+        
+        void addAlias(const std::string& alias) {
+            if (std::find(aliases.begin(), aliases.end(), alias) != aliases.end()) throw exceptions::DuplicateArgumentAlias(alias, name);
+            aliases.push_back(alias);
+        }
     };
 
 private:
@@ -492,6 +509,21 @@ public:
     void setDescription(const std::string& desc) { description_ = desc; }
 
     void addArgument(const std::string& name, const std::type_info& type, bool positional = false, bool optional = true) {
+        if (argIndex_.find(name) != argIndex_.end()) {
+            throw exceptions::DuplicateArgument(name);
+        }
+        
+        // 2. 检查是否和其他参数的别名冲突
+        for (const auto& existing : argDefs_) {
+            for (const auto& alias : existing.aliases) {
+                if (alias == name) {
+                    throw exceptions::DuplicateArgument(
+                        "Argument name '" + name + "' conflicts with alias of '" + 
+                        existing.name + "'"
+                    );
+                }
+            }
+        }
         argIndex_[name] = argDefs_.size();
         argDefs_.emplace_back(name, type, positional, optional);
     }
@@ -503,6 +535,7 @@ public:
 
     const std::string& getName() const { return name_; }
     const std::string& getDescription() const { return description_; }
+    std::vector<ArgumentDef>& getArguments2() { return argDefs_; }
     const std::vector<ArgumentDef>& getArguments() const { return argDefs_; }
 
     bool hasHandler() const { return hasHandler_; }
@@ -543,18 +576,17 @@ class CommandRegister {
 private:
     std::shared_ptr<Command> cmd_;
     CommandParser* parser_;
+    size_t currentArgIndex_ = 0;
 
 public:
     CommandRegister(std::shared_ptr<Command> cmd, CommandParser* parser = nullptr)
         : cmd_(cmd), parser_(parser) {}
 
-    // 注册子命令
-    CommandRegister subcmd(const std::string& name);
-
     // 注册参数（位置固定）
     template<typename T>
     CommandRegister& argument(const std::string& name) {
         cmd_->addArgument(name, typeid(T), false, false); // 必填
+        currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
@@ -562,6 +594,7 @@ public:
     template<typename T>
     CommandRegister& argumentOptional(const std::string& name) {
         cmd_->addArgument(name, typeid(T), false, true);
+        currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
@@ -569,6 +602,7 @@ public:
     template<typename T>
     CommandRegister& argumentFlag(const std::string& name) {
         cmd_->addArgument(name, typeid(T), false, true);
+        currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
@@ -576,6 +610,7 @@ public:
     template<typename T>
     CommandRegister& positional(const std::string& name) {
         cmd_->addArgument(name, typeid(T), true, false); // 必填位置参数
+        currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
@@ -583,12 +618,34 @@ public:
     template<typename T>
     CommandRegister& positionalOptional(const std::string& name) {
         cmd_->addArgument(name, typeid(T), true, true);
+        currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
     // 设置执行函数
     CommandRegister& execute(std::function<bool(CommandArgument&)> handler) {
         cmd_->setHandler(handler);
+        return *this;
+    }
+
+    CommandRegister& alias(const std::string& aliasName) {
+        auto& argDefs = cmd_->getArguments2();
+        if (currentArgIndex_ >= argDefs.size()) {
+            throw exceptions::InvalidCommandSyntax("No argument to add alias to");
+        }
+        for (const auto& def : argDefs) {
+            if (def.name == aliasName) {
+                throw exceptions::DuplicateArgument(
+                    "Alias name '" + aliasName + "' conflicts with a existing argument"
+                );
+            }
+            if (std::find(def.aliases.begin(), def.aliases.end(), aliasName) != def.aliases.end()) {
+                throw exceptions::DuplicateArgumentAlias(
+                    aliasName, def.name
+                );
+            }
+        }
+        argDefs[currentArgIndex_].addAlias(aliasName);
         return *this;
     }
 
@@ -618,7 +675,7 @@ private:
         }
 
         std::string cmdName = tokens[0];
-        if (!caseSensitive_) {
+        if (!caseSensitive_) { // 不区分大小写
             // 转小写
             std::transform(cmdName.begin(), cmdName.end(), cmdName.begin(), ::tolower);
         }
@@ -644,6 +701,7 @@ private:
         // 解析参数
         std::string currentArgName;
         bool expectValue = false;
+        bool stopParsing = false;
 
         auto findArgDef = [&](const std::string& name) -> const Command::ArgumentDef* {
             for (const auto& argDef : cmd->getArguments()) {
@@ -657,6 +715,13 @@ private:
 
         for (size_t i = 1; i < tokens.size(); i++) {
             const std::string& token = tokens[i];
+            if (stopParsing) {
+                args.addPositional(token);
+                continue;
+            } else if (token == "--") {
+                stopParsing = true;
+                continue;
+            }
 
             if (expectValue) {
                 if (token.empty()) {
@@ -785,24 +850,28 @@ public:
         char quoteChar = '"';
 
         for (char c : cmdLine) {
-            if (c == '"' || c == '\'') {
-                if (!inQuotes) {
-                    inQuotes = true;
-                    quoteChar = c;
-                } else if (c == quoteChar) {
-                    inQuotes = false;
+            if (inQuotes) {
+                if (c == quoteChar && !current.empty()) {
+                    tokens.push_back(current); // push token
+                    current.clear(); // clear current
+                    inQuotes = false; // 取消设置状态
                 } else {
-                    current += c;
+                    current += c; // 按原样处理
                 }
-            } else if (std::isspace(c) && !inQuotes) {
-                if (!current.empty()) {
-                    tokens.push_back(current);
-                    current.clear();
-                }
+            } else if (c == '"' || c == '\'') { // 是quote
+                inQuotes = true;
+                quoteChar = c;
+            } else if (std::isspace(c) && !current.empty()) { // 遇到空格
+                tokens.push_back(current); // push token
+                current.clear(); // clear current
             } else {
                 current += c;
             }
         }
+        if (inQuotes) {
+            throw exceptions::InvalidCommandSyntax("Quote never closes");
+        }
+
         if (!current.empty()) {
             tokens.push_back(current);
         }
@@ -825,6 +894,7 @@ public:
         if (tokens.empty()) {
             throw exceptions::InvalidCommandSyntax("No command specified");
         }
+        // 然后可以直接用（因为argv已经帮你切好了）
         auto result = parseTokens(tokens);
         return executeCommand(result.first, result.second);
     }
@@ -880,17 +950,4 @@ public:
         return names;
     }
 };
-
-// ============================================================================
-// CommandRegister 的实现（需要 CommandParser 完整定义）
-// ============================================================================
-inline CommandRegister CommandRegister::subcmd(const std::string& name) {
-    if (parser_) {
-        return parser_->registerCommand(name);
-    }
-    // 如果没有 parser，返回一个空的注册器
-    auto cmd = std::make_shared<Command>(name);
-    return CommandRegister(cmd, nullptr);
-}
-
 } // namespace cmdparser

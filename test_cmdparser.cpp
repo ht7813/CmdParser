@@ -69,6 +69,45 @@ TEST_F(CmdParserTest, RegisterAliasToUnknownCommand)
     EXPECT_THROW({ parser.registerAlias("xyz", "nonexistent"); }, exceptions::UnknownCommand);
 }
 
+TEST_F(CmdParserTest, DuplicateArgumentName)
+{
+    EXPECT_THROW({
+        parser.registerCommand("dup")
+            .argument<std::string>("-m")
+            .argument<int>("-m");  // ❌
+    }, exceptions::DuplicateArgument);
+}
+
+TEST_F(CmdParserTest, AliasConflictsWithArgumentName)
+{
+    EXPECT_THROW({
+        parser.registerCommand("conflict")
+            .argument<std::string>("--message")
+                .alias("-m")
+            .argumentFlag<bool>("-m");  // ❌ -m 已经是别名
+    }, exceptions::DuplicateArgument);
+}
+
+TEST_F(CmdParserTest, AliasConflictsWithAnotherAlias)
+{
+    EXPECT_THROW({
+        parser.registerCommand("conflict2")
+            .argument<std::string>("--message")
+                .alias("-m")
+            .argument<int>("--count")
+                .alias("-m");  // ❌ -m 已经被用过了
+    }, exceptions::DuplicateArgumentAlias);
+}
+
+TEST_F(CmdParserTest, AliasSameAsOwnName)
+{
+    EXPECT_THROW({
+        parser.registerCommand("self_conflict")
+            .argument<std::string>("--message")
+                .alias("--message");  // ❌ 别名和主名称相同
+    }, exceptions::DuplicateArgument);
+}
+
 // ============================================================================
 // Basic Parsing Tests
 // ============================================================================
@@ -199,6 +238,50 @@ TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange)
     EXPECT_TRUE(executed);
 }
 
+TEST_F(CmdParserTest, DoubleDashStopParsing)
+{
+    bool executed = false;
+    parser.registerCommand("test")
+        .argument<std::string>("-n")
+        .positional<std::string>("file")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("-n"), "hello");
+            EXPECT_EQ(args.getPositional(0), "--file-with-dash.txt");
+            executed = true;
+            return true;
+        });
+    
+    EXPECT_TRUE(parser.parse("test -n hello -- --file-with-dash.txt"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, DoubleDashStopParsingPlus)
+{
+    bool executed = false;
+    parser.registerCommand("test_plus")
+        .argument<std::string>("-n")
+        .argumentFlag<bool>("-a")
+        .argumentFlag<bool>("-b")
+        .argumentFlag<bool>("-c")
+        .argumentFlag<bool>("-d")
+        .argumentFlag<bool>("-e")
+        .positional<std::string>("file")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_TRUE(args.has("-a"));
+            EXPECT_TRUE(args.has("-b"));
+            EXPECT_FALSE(args.has("-c"));
+            EXPECT_FALSE(args.has("-d"));
+            EXPECT_FALSE(args.has("-e"));
+            EXPECT_EQ(args.get<std::string>("-n"), "hello");
+            EXPECT_EQ(args.getPositional(0), "-ced");
+            executed = true;
+            return true;
+        });
+    
+    EXPECT_TRUE(parser.parse("test_plus -abn hello -- -ced"));
+    EXPECT_TRUE(executed);
+}
+
 // ============================================================================
 // Quoted String Tests
 // ============================================================================
@@ -255,6 +338,40 @@ TEST_F(CmdParserTest, ParseViaAlias)
     EXPECT_TRUE(executed);
 }
 
+TEST_F(CmdParserTest, ArgumentAlias)
+{
+    bool executed = false;
+    parser.registerCommand("alias_test")
+        .argument<std::string>("--message")
+            .alias("-m")
+            .alias("--msg")
+        .argumentFlag<bool>("--verbose")
+            .alias("-v")
+        .execute([&executed](CommandArgument& args) -> bool {
+            // 通过主名称获取值
+            EXPECT_EQ(args.get<std::string>("--message"), "hello");
+            // 别名不应该能直接 get（因为存储用的是主名称）
+            EXPECT_FALSE(args.has("-m"));  // 别名不在 args 里
+            EXPECT_TRUE(args.has("--verbose"));
+            executed = true;
+            return true;
+        });
+    
+    // 用户可以使用别名
+    EXPECT_TRUE(parser.parse("alias_test -m hello -v"));
+    EXPECT_TRUE(executed);
+    
+    // 也可以使用主名称
+    executed = false;
+    EXPECT_TRUE(parser.parse("alias_test --message hello --verbose"));
+    EXPECT_TRUE(executed);
+    
+    // 混合使用
+    executed = false;
+    EXPECT_TRUE(parser.parse("alias_test --msg hello -v"));
+    EXPECT_TRUE(executed);
+}
+
 // ============================================================================
 // Exception Tests
 // ============================================================================
@@ -290,6 +407,11 @@ TEST_F(CmdParserTest, ArgumentTypeMismatch)
     const char *argv[] = {"testcli", "typecheck", "-num", "42"};
     parser.parse(4, const_cast<char **>(argv));
     EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, UnclosedQuote)
+{
+    EXPECT_THROW(parser.parse("echo \"Message"), exceptions::InvalidCommandSyntax);
 }
 
 // ============================================================================
