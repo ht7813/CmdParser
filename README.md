@@ -101,6 +101,7 @@ parser.registerCommand("cmd")
     .description("Description text")
     .argument<T>("name")           // Required named argument
         .alias("alias")            // Alias
+        .argDescription("description") // Description for command
     .argumentOptional<T>("name")   // Optional named argument
         .defaultValue("value")     // Default Value
     .flag("name")       // Flag argument (boolean)

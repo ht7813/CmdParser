@@ -545,6 +545,9 @@ public:
             defaultValue = value;
             hasDefault = true;
         }
+        void setDescription(const std::string& value) {
+            description = value;
+        }
     };
 
 private:
@@ -709,6 +712,15 @@ public:
             }
         }
         argDefs[currentArgIndex_].addAlias(aliasName);
+        return *this;
+    }
+
+    CommandRegister& argDescription(const std::string& description) {
+        auto& argDefs = cmd_->getArguments2();
+        if (currentArgIndex_ >= argDefs.size()) {
+            throw exceptions::InvalidCommandSyntax("No argument to set description to");
+        }
+        argDefs[currentArgIndex_].setDescription(description);
         return *this;
     }
 
@@ -1070,43 +1082,221 @@ public:
         return executeCommand(result.first, result.second);
     }
 
-    // 获取帮助信息
+    // ============================================================================
+    // Help Generation
+    // ============================================================================
+
     std::string getHelp() const {
         std::stringstream ss;
         ss << "Usage: " << programName_ << " <command> [options]\n\n";
         ss << "Commands:\n";
+        
         for (const auto& pair : commands_) {
             const auto& cmd = pair.second;
             ss << "  " << cmd->getName();
+            
             if (!cmd->getDescription().empty()) {
                 ss << "  - " << cmd->getDescription();
             }
             ss << "\n";
         }
+        
+        ss << "\n";
+        ss << "Global Options:\n";
+        ss << "  --help, -h  Show this help message\n";
+        ss << "  --version   Show version information\n";
+        ss << "\n";
+        ss << "For more help on a specific command:\n";
+        ss << "  " << programName_ << " help <command>\n";
+        
         return ss.str();
     }
 
-    // 获取特定命令的帮助
     std::string getHelp(const std::string& commandName) const {
         auto it = commands_.find(commandName);
         if (it == commands_.end()) {
             return "Unknown command: " + commandName;
         }
+        
         const auto& cmd = it->second;
         std::stringstream ss;
+        
+        // 命令名称和描述
         ss << "Command: " << cmd->getName() << "\n";
         if (!cmd->getDescription().empty()) {
-            ss << "  " << cmd->getDescription() << "\n";
+            ss << cmd->getDescription() << "\n";
         }
-        ss << "Arguments:\n";
+        ss << "\n";
+        
+        // 用法
+        ss << "Usage: " << programName_ << " " << cmd->getName();
+        
+        // 添加命名参数
+        bool hasNamedArgs = false;
         for (const auto& arg : cmd->getArguments()) {
-            ss << "  " << arg.name;
-            if (arg.isOptional) ss << " (optional)";
-            else ss << " (required)";
-            if (arg.isPositional) ss << " [positional]";
-            ss << " : " << arg.type.name() << "\n";
+            if (!arg.isPositional) {
+                if (!hasNamedArgs) {
+                    ss << " [options]";
+                    hasNamedArgs = true;
+                }
+            }
         }
+        
+        // 添加位置参数
+        for (const auto& arg : cmd->getArguments()) {
+            if (arg.isPositional) {
+                if (__internal::isVariadicArg(arg.name)) {
+                    if (arg.isOptional) {
+                        ss << " [" << arg.name << "]";
+                    } else {
+                        ss << " " << arg.name;
+                    }
+                } else {
+                    if (arg.isOptional) {
+                        ss << " [" << arg.name << "]";
+                    } else {
+                        ss << " " << arg.name;
+                    }
+                }
+            }
+        }
+        ss << "\n\n";
+        
+        // 命名参数（选项）
+        bool hasOptions = false;
+        for (const auto& arg : cmd->getArguments()) {
+            if (!arg.isPositional) {
+                if (!hasOptions) {
+                    ss << "Options:\n";
+                    hasOptions = true;
+                }
+                
+                // 选项名称（包括别名）
+                std::string names = arg.name;
+                for (const auto& alias : arg.aliases) {
+                    names += ", " + alias;
+                }
+                ss << "  " << names;
+                
+                // 类型
+                ss << " <" << demangle(arg.type.name()) << ">";
+                
+                // 是否必填
+                if (arg.isOptional) {
+                    ss << " (optional)";
+                } else {
+                    ss << " (required)";
+                }
+                
+                // 默认值
+                if (arg.isOptional && arg.hasDefault) {
+                    ss << " [default: " << arg.defaultValue << "]";
+                }
+                
+                // 描述
+                if (!arg.description.empty()) {
+                    ss << "\n      " << arg.description;
+                }
+                
+                ss << "\n";
+            }
+        }
+        
+        if (hasOptions) ss << "\n";
+        
+        // 位置参数
+        bool hasPositionals = false;
+        for (const auto& arg : cmd->getArguments()) {
+            if (arg.isPositional) {
+                if (!hasPositionals) {
+                    ss << "Arguments:\n";
+                    hasPositionals = true;
+                }
+                
+                ss << "  " << arg.name;
+                
+                // 变长参数标识
+                if (__internal::isVariadicArg(arg.name)) {
+                    ss << " (variadic)";
+                    if (arg.isOptional) {
+                        ss << " [0 or more]";
+                    } else {
+                        ss << " [1 or more]";
+                    }
+                } else {
+                    if (arg.isOptional) {
+                        ss << " (optional)";
+                    } else {
+                        ss << " (required)";
+                    }
+                }
+                
+                // 类型
+                ss << " <" << demangle(arg.type.name()) << ">";
+                
+                // 默认值（只有可选且有默认值时）
+                if (arg.isOptional && arg.hasDefault) {
+                    ss << " [default: " << arg.defaultValue << "]";
+                }
+                
+                // 描述
+                if (!arg.description.empty()) {
+                    ss << "\n      " << arg.description;
+                }
+                
+                ss << "\n";
+            }
+        }
+        
+        if (hasPositionals) ss << "\n";
+        
+        // 执行器提示
+        ss << "Examples:\n";
+        ss << "  " << programName_ << " " << cmd->getName();
+        
+        // 找一个示例
+        bool first = true;
+        for (const auto& arg : cmd->getArguments()) {
+            if (arg.isPositional) {
+                if (__internal::isVariadicArg(arg.name)) {
+                    if (arg.isOptional) {
+                        ss << " [value...]";
+                    } else {
+                        ss << " value...";
+                    }
+                } else {
+                    if (arg.isOptional) {
+                        ss << " [" << arg.name << "]";
+                    } else {
+                        ss << " " << arg.name;
+                    }
+                }
+            } else {
+                if (first && !arg.isOptional) {
+                    ss << " " << arg.name << " value";
+                    first = false;
+                }
+            }
+        }
+        ss << "\n";
+        
         return ss.str();
+    }
+
+    // 辅助函数：demangle 类型名（可选）
+    std::string demangle(const std::string& mangled) const {
+        if (mangled == "i") return "int";
+        if (mangled == "l") return "long";
+        if (mangled == "x") return "long long";
+        if (mangled == "j") return "unsigned int";
+        if (mangled == "m") return "unsigned long";
+        if (mangled == "y") return "unsigned long long";
+        if (mangled == "f") return "float";
+        if (mangled == "d") return "double";
+        if (mangled == "e") return "long double";
+        if (mangled == "b") return "bool";
+        if (mangled == "NSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE") return "string";
+        return mangled;
     }
 
     // 设置大小写敏感
