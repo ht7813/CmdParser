@@ -12,7 +12,7 @@
 >
 > **⚠️ v2 is NOT compatible with v1.**
 >
-> For new projects: Use v2
+> For new projects: Use v2  
 > For existing projects: See [MIGRATION.md](https://github.com/ht7813/CmdParser/blob/v2/MIGRATION.md)
 >
 > [Switch to v2 branch](https://github.com/ht7813/CmdParser/tree/v2)
