@@ -17,8 +17,23 @@
 #include <cctype>
 #include <cmath>
 
-// Internal Defines, DO NOT Use in user program
+// ============================================================================
+// C++ Standard Detection
+// ============================================================================
+
+#if defined(_MSVC_LANG)
+    #define __CMDPARSER_CPP_STANDARD _MSVC_LANG // Why Microsoft make special on everything ?!?!
+#else
+    #define __CMDPARSER_CPP_STANDARD __cplusplus
+#endif
+
+// ============================================================================
+// Internal Helper Macros
+// ============================================================================
+
+// Internal Define, DO NOT Use in user program
 #define __CMDPARSER_INTERNAL_CONVERTER_ITEM(T) {std::type_index(typeid(T)), convertFromString<T>},
+// Internal Define, DO NOT Use in user program
 #define __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(T) \
         else if (type_ == typeid(T)) { \
             deleter_ = [](void* p) { delete static_cast<T*>(p); }; \
@@ -27,6 +42,17 @@
             }; \
         }
 
+// ============================================================================
+// Debug Macros
+// ============================================================================
+
+#ifdef CMDPARSER_DEBUG
+    #define CMDPARSER_DEBUG_PRINT(fmt, ...) \
+        printf("[DEBUG] %s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+    #define CMDPARSER_DEBUG_PRINT(fmt, ...) ((void)0)
+#endif
+
 namespace cmdparser {
 
 // 前置声明
@@ -34,6 +60,24 @@ class CommandArgument;
 class Command;
 class CommandRegister;
 class CommandParser;
+
+// ============================================================================
+// Internal Helpers
+// ============================================================================
+namespace __internal {
+    bool endsWith(const std::string& str, const std::string& suffix) {
+        #if __CMDPARSER_CPP_STANDARD >= 202002L
+        return str.ends_with(suffix); // C++ 20
+        #else
+        if (suffix.size() > str.size()) return false;
+        return str.rfind(suffix) == str.size() - suffix.size();
+        #endif
+    }
+
+    bool isVariadicArg(const std::string& name) {
+        return endsWith(name, "...");
+    }
+}
 
 // ============================================================================
 // 异常定义
@@ -184,6 +228,7 @@ private:
             __CMDPARSER_INTERNAL_CONVERTER_ITEM(float)
             __CMDPARSER_INTERNAL_CONVERTER_ITEM(double)
             __CMDPARSER_INTERNAL_CONVERTER_ITEM(long double)
+            __CMDPARSER_INTERNAL_CONVERTER_ITEM(size_t)
             {std::type_index(typeid(std::string)), [](const std::string& str) -> void* {
                 return new std::string(str);
             }},
@@ -211,6 +256,7 @@ private:
         __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(float)
         __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(double)
         __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(long double)
+        __CMDPARSER_INTERNAL_DELETER_TOSTRING_ITEM(size_t)
     }
 
 public:
@@ -372,7 +418,7 @@ public:
 class CommandArgument {
 private:
     std::unordered_map<std::string, ArgumentValue> args_;
-    std::vector<std::string> positionalArgs_; // 位置参数
+    std::vector<ArgumentValue> positionalArgs_; // 位置参数
 
 public:
     CommandArgument() = default;
@@ -403,8 +449,8 @@ public:
     }
 
 
-    void addPositional(const std::string& value) {
-        positionalArgs_.push_back(value);
+    void addPositional(ArgumentValue&& value) {
+        positionalArgs_.push_back(std::move(value));
     }
 
     // 获取命名参数
@@ -418,11 +464,12 @@ public:
     }
 
     // 获取位置参数
-    const std::string& getPositional(size_t index) const {
-        if (index >= positionalArgs_.size()) {
+    template<typename T>
+    const T& getPositional(size_t index) const {
+        if (index >= positionalArgs_.size() || index < 0) {
             throw exceptions::InvalidCommandSyntax("Positional argument index out of range");
         }
-        return positionalArgs_[index];
+        return positionalArgs_[index].as<T>();
     }
 
     // 检查是否存在
@@ -461,7 +508,7 @@ public:
         }
         printf("Positional:\n");
         for (size_t i = 0; i < positionalArgs_.size(); i++) {
-            printf("  [%zu] = %s\n", i, positionalArgs_[i].c_str());
+            printf("  [%zu] = %s\n", i, positionalArgs_[i].toString().c_str());
         }
     }
 };
@@ -476,6 +523,7 @@ public:
         std::type_index type;
         bool isPositional;
         bool isOptional;
+        bool hasDefault;
         std::string defaultValue;
         std::string description;
         std::vector<std::string> aliases; // 可选：短选项别名
@@ -492,6 +540,10 @@ public:
         void addAlias(const std::string& alias) {
             if (std::find(aliases.begin(), aliases.end(), alias) != aliases.end()) throw exceptions::DuplicateArgumentAlias(alias, name);
             aliases.push_back(alias);
+        }
+        void setDefault(const std::string& value) {
+            defaultValue = value;
+            hasDefault = true;
         }
     };
 
@@ -523,6 +575,10 @@ public:
                     );
                 }
             }
+            if ((existing.isPositional && existing.isOptional) && (positional && !optional))
+                throw exceptions::InvalidCommandSyntax("Required positional arguments cannot appear after optional positional arguments");
+            if ((existing.isPositional && __internal::isVariadicArg(existing.name)) && positional)
+                throw exceptions::InvalidCommandSyntax("New positional arguments cannot appear after long positional arguments (ends with ...)");
         }
         argIndex_[name] = argDefs_.size();
         argDefs_.emplace_back(name, type, positional, optional);
@@ -550,23 +606,23 @@ public:
 
     // 参数验证
     void validateArgs(const CommandArgument& args) const {
-    size_t positionalIndex = 0;
-    
-    for (const auto& def : argDefs_) {
-        if (def.isPositional) {
-            // 位置参数：检查 positionalArgs_ 是否提供了该位置的值
-            if (!def.isOptional && positionalIndex >= args.positionalCount()) {
-                throw exceptions::MissingRequiredArgument(def.name);
-            }
-            positionalIndex++;
-        } else {
-            // 命名参数：检查 args_ 中是否存在
-            if (!def.isOptional && !args.has(def.name)) {
-                throw exceptions::MissingRequiredArgument(def.name);
+        size_t positionalIndex = 0;
+        
+        for (const auto& def : argDefs_) {
+            if (def.isPositional) {
+                // 位置参数：检查 positionalArgs_ 是否提供了该位置的值
+                if (!def.isOptional && positionalIndex >= args.positionalCount()) {
+                    throw exceptions::MissingRequiredArgument(def.name);
+                }
+                positionalIndex++;
+            } else {
+                // 命名参数：检查 args_ 中是否存在
+                if (!def.isOptional && !args.has(def.name)) {
+                    throw exceptions::MissingRequiredArgument(def.name);
+                }
             }
         }
     }
-}
 };
 
 // ============================================================================
@@ -585,6 +641,8 @@ public:
     // 注册参数（位置固定）
     template<typename T>
     CommandRegister& argument(const std::string& name) {
+        static_assert(!std::is_same_v<T, bool>, 
+                  "bool arguments must be declared using .flag()");
         cmd_->addArgument(name, typeid(T), false, false); // 必填
         currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
@@ -593,15 +651,16 @@ public:
     // 注册参数（位置固定，可选）
     template<typename T>
     CommandRegister& argumentOptional(const std::string& name) {
+        static_assert(!std::is_same_v<T, bool>, 
+                  "bool arguments must be declared using .flag()");
         cmd_->addArgument(name, typeid(T), false, true);
         currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
 
     // 注册任意位置参数（带标志，如 --message, -i, -o）
-    template<typename T>
-    CommandRegister& argumentFlag(const std::string& name) {
-        cmd_->addArgument(name, typeid(T), false, true);
+    CommandRegister& flag(const std::string& name) {
+        cmd_->addArgument(name, typeid(bool), false, true);
         currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
     }
@@ -609,6 +668,8 @@ public:
     // 注册位置参数（按顺序）
     template<typename T>
     CommandRegister& positional(const std::string& name) {
+        static_assert(!std::is_same_v<T, bool>, 
+                  "bool positionals are not supported, use .flag()");
         cmd_->addArgument(name, typeid(T), true, false); // 必填位置参数
         currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
@@ -617,6 +678,8 @@ public:
     // 注册位置参数（可选）
     template<typename T>
     CommandRegister& positionalOptional(const std::string& name) {
+        static_assert(!std::is_same_v<T, bool>, 
+                  "bool positionals are not supported, use .flag()");
         cmd_->addArgument(name, typeid(T), true, true);
         currentArgIndex_ = cmd_->getArguments().size() - 1;
         return *this;
@@ -646,6 +709,34 @@ public:
             }
         }
         argDefs[currentArgIndex_].addAlias(aliasName);
+        return *this;
+    }
+
+    template<typename T>
+    CommandRegister& defaultValue(const T& value) {
+        if (currentArgIndex_ >= cmd_->getArguments().size()) {
+            throw exceptions::InvalidCommandSyntax(
+                "No argument to set default value for"
+            );
+        }
+        
+        auto& argDef = cmd_->getArguments2()[currentArgIndex_];
+        
+        // 类型检查（编译时）
+        static_assert(!std::is_same_v<T, bool>, 
+                      "Boolean arguments should use .flag()");
+
+        if (!(argDef.isOptional && !argDef.isPositional)) {
+            throw exceptions::InvalidCommandSyntax(
+                "Only .argumentOptional args can have default values"
+            );
+        }
+        
+        // 存储默认值（转为字符串）
+        std::stringstream ss;
+        ss << value;
+        argDef.setDefault(ss.str());
+        
         return *this;
     }
 
@@ -702,8 +793,10 @@ private:
         std::string currentArgName;
         bool expectValue = false;
         bool stopParsing = false;
+        std::vector<std::string> queuePositionals;
 
         auto findArgDef = [&](const std::string& name) -> const Command::ArgumentDef* {
+            CMDPARSER_DEBUG_PRINT("Finding Argument: %s\n", name.c_str());
             for (const auto& argDef : cmd->getArguments()) {
                 if (argDef.name == name ||
                     std::find(argDef.aliases.begin(), argDef.aliases.end(), name) != argDef.aliases.end()) {
@@ -716,12 +809,14 @@ private:
         for (size_t i = 1; i < tokens.size(); i++) {
             const std::string& token = tokens[i];
             if (stopParsing) {
-                args.addPositional(token);
+                CMDPARSER_DEBUG_PRINT("Pushing Token to positional queue: %s\n", token.c_str());
+                queuePositionals.push_back(token);
                 continue;
             } else if (token == "--") {
                 stopParsing = true;
                 continue;
             }
+            CMDPARSER_DEBUG_PRINT("Processing Token: %s\n", token.c_str());
 
             if (expectValue) {
                 if (token.empty()) {
@@ -759,9 +854,12 @@ private:
                     bool handled = false;
                     for (size_t j = 1; j < token.size(); j++) {
                         std::string flagName = std::string("-") + token[j];
+                        CMDPARSER_DEBUG_PRINT("Expanded Flag: %s\n", flagName.c_str());
                         const auto* shortArgDef = findArgDef(flagName);
                         if (shortArgDef == nullptr) {
-                            args.addPositional(token);
+                            CMDPARSER_DEBUG_PRINT("Unknown Flag: %s\n", flagName.c_str());
+                            CMDPARSER_DEBUG_PRINT("Pushing Token to positional queue: %s\n", token.c_str());
+                            queuePositionals.push_back(token);
                             handled = true;
                             break;
                         }
@@ -792,18 +890,91 @@ private:
                         break;
                     }
                     if (!handled) {
-                        args.addPositional(token);
+                        handled = true;
+                    }
+                    if (!handled) {
+                        CMDPARSER_DEBUG_PRINT("Pushing Token to positional queue: %s\n", token.c_str());
+                        queuePositionals.push_back(token);
                     }
                 } else {
                     // 未知标志，作为位置参数
-                    args.addPositional(token);
+                    CMDPARSER_DEBUG_PRINT("Pushing Token to positional queue: %s\n", token.c_str());
+                    queuePositionals.push_back(token);
                 }
             } else {
                 // 位置参数
-                args.addPositional(token);
+                CMDPARSER_DEBUG_PRINT("Pushing Token to positional queue: %s\n", token.c_str());
+                queuePositionals.push_back(token);
+            }
+        }
+        // ============================================================================
+        // Add Positionals + Fill Defaults
+        // ============================================================================
+
+        size_t positionalIndex = 0;
+        bool hasVariadic = false;
+        size_t variadicIdx = (size_t)-1;
+
+        // 1. 查找变长参数
+        for (size_t i = 0; i < cmd->getArguments().size(); i++) {
+            const auto& def = cmd->getArguments()[i];
+            if (def.isPositional && __internal::isVariadicArg(def.name)) {
+                hasVariadic = true;
+                variadicIdx = i;
+                break;
             }
         }
 
+        // 2. 分配位置参数
+        for (size_t i = 0; i < cmd->getArguments().size(); i++) {
+            const auto& def = cmd->getArguments()[i];
+            
+            if (!def.isPositional) {
+                continue;  // 命名参数稍后处理
+            }
+            
+            // 变长参数：吃掉所有剩余 token
+            if (hasVariadic && i == variadicIdx) {
+                while (positionalIndex < queuePositionals.size()) {
+                    args.addPositional(ArgumentValue(
+                        queuePositionals[positionalIndex++], 
+                        def.type
+                    ));
+                }
+                continue;
+            }
+            
+            // 普通位置参数
+            if (positionalIndex < queuePositionals.size()) {
+                args.addPositional(ArgumentValue(
+                    queuePositionals[positionalIndex++], 
+                    def.type
+                ));
+            } else if (!def.isOptional) {
+                throw exceptions::MissingRequiredArgument(def.name);
+            }
+        }
+
+        // 3. 检查多余的 token（没有变长参数时）
+        if (!hasVariadic && positionalIndex < queuePositionals.size()) {
+            CMDPARSER_DEBUG_PRINT("positionalIndex: %d, queuePositionals size: %d\n", positionalIndex, queuePositionals.size());
+            std::string rawData;
+            for (const auto& data : queuePositionals) {
+                rawData += data;
+                rawData += ",";
+            }
+            CMDPARSER_DEBUG_PRINT("Data: %s\n", rawData.c_str());
+            throw exceptions::InvalidCommandSyntax(
+                "Too many positional arguments"
+            );
+        }
+
+        // 4. 填充默认值（对所有命名参数）
+        for (const auto& def : cmd->getArguments()) {
+            if (!def.isPositional && def.hasDefault && !args.has(def.name)) {
+                args.set(def.name, ArgumentValue(def.defaultValue, def.type));
+            }
+        }
         // 验证必填参数
         cmd->validateArgs(args);
 
@@ -869,7 +1040,7 @@ public:
             }
         }
         if (inQuotes) {
-            throw exceptions::InvalidCommandSyntax("Quote never closes");
+            throw exceptions::InvalidCommandSyntax("Unclosed Quote");
         }
 
         if (!current.empty()) {

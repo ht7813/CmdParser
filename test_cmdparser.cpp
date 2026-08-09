@@ -21,7 +21,7 @@ protected:
         parser.registerCommand("greet")
             .description("Greet someone")
             .argument<std::string>("-n")
-            .argumentFlag<bool>("-u")
+            .flag("-u")
             .execute([](CommandArgument &args) -> bool
                      { return true; });
 
@@ -84,7 +84,7 @@ TEST_F(CmdParserTest, AliasConflictsWithArgumentName)
         parser.registerCommand("conflict")
             .argument<std::string>("--message")
                 .alias("-m")
-            .argumentFlag<bool>("-m");  // ❌ -m 已经是别名
+            .flag("-m");  // ❌ -m 已经是别名
     }, exceptions::DuplicateArgument);
 }
 
@@ -134,6 +134,21 @@ TEST_F(CmdParserTest, ParseCommandLineString)
     EXPECT_TRUE(parser.parse("greet -n Alice"));
 }
 
+TEST_F(CmdParserTest, ParseDosStyleOption)
+{
+    parser.registerCommand("test_dos")
+        .flag("/a")
+        .flag("/b")
+        .argument<std::string>("/m")
+        .execute([](CommandArgument &args) -> bool {
+            EXPECT_TRUE(args.has("/a"));
+            EXPECT_TRUE(args.has("/b"));
+            EXPECT_EQ(args.get<std::string>("/m"), "Hello");
+            return true;
+        });
+    EXPECT_TRUE(parser.parse("test_dos /a /b /m Hello"));
+}
+
 // ============================================================================
 // Argument Retrieval Tests
 // ============================================================================
@@ -150,7 +165,7 @@ protected:
     {
         parser.registerCommand("capture")
             .argumentOptional<std::string>("-s")
-            .argumentFlag<bool>("-f")
+            .flag("-f")
             .execute([this](CommandArgument &args) -> bool
                      {
                 if (args.has("-s")) {
@@ -210,7 +225,7 @@ TEST_F(CmdParserTest, PositionalArgumentParsing)
         .positional<std::string>("name")
         .execute([&executed](CommandArgument &args) -> bool
                  {
-            EXPECT_EQ(args.getPositional(0), "testfile");
+            EXPECT_EQ(args.getPositional<std::string>(0), "testfile");
             EXPECT_EQ(args.positionalCount(), 1);
             executed = true;
             return true; });
@@ -228,7 +243,7 @@ TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange)
         .execute([&executed](CommandArgument &args) -> bool
                  {
             EXPECT_THROW({
-                args.getPositional(10);
+                args.getPositional<std::string>(10);
             }, exceptions::InvalidCommandSyntax);
             executed = true;
             return true; });
@@ -236,6 +251,16 @@ TEST_F(CmdParserTest, PositionalArgumentIndexOutOfRange)
     const char *argv[] = {"testcli", "pos2", "testfile"};
     parser.parse(3, const_cast<char **>(argv));
     EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, TooManyPositionalArguments)
+{
+    parser.registerCommand("pos3")
+        .positional<std::string>("name")
+        .execute([](CommandArgument &args) -> bool
+                 {
+            return true; });
+    EXPECT_THROW(parser.parse("pos3 a b"), exceptions::InvalidCommandSyntax);
 }
 
 TEST_F(CmdParserTest, DoubleDashStopParsing)
@@ -246,7 +271,7 @@ TEST_F(CmdParserTest, DoubleDashStopParsing)
         .positional<std::string>("file")
         .execute([&executed](CommandArgument& args) -> bool {
             EXPECT_EQ(args.get<std::string>("-n"), "hello");
-            EXPECT_EQ(args.getPositional(0), "--file-with-dash.txt");
+            EXPECT_EQ(args.getPositional<std::string>(0), "--file-with-dash.txt");
             executed = true;
             return true;
         });
@@ -260,11 +285,11 @@ TEST_F(CmdParserTest, DoubleDashStopParsingPlus)
     bool executed = false;
     parser.registerCommand("test_plus")
         .argument<std::string>("-n")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
-        .argumentFlag<bool>("-c")
-        .argumentFlag<bool>("-d")
-        .argumentFlag<bool>("-e")
+        .flag("-a")
+        .flag("-b")
+        .flag("-c")
+        .flag("-d")
+        .flag("-e")
         .positional<std::string>("file")
         .execute([&executed](CommandArgument& args) -> bool {
             EXPECT_TRUE(args.has("-a"));
@@ -273,7 +298,7 @@ TEST_F(CmdParserTest, DoubleDashStopParsingPlus)
             EXPECT_FALSE(args.has("-d"));
             EXPECT_FALSE(args.has("-e"));
             EXPECT_EQ(args.get<std::string>("-n"), "hello");
-            EXPECT_EQ(args.getPositional(0), "-ced");
+            EXPECT_EQ(args.getPositional<std::string>(0), "-ced");
             executed = true;
             return true;
         });
@@ -345,7 +370,7 @@ TEST_F(CmdParserTest, ArgumentAlias)
         .argument<std::string>("--message")
             .alias("-m")
             .alias("--msg")
-        .argumentFlag<bool>("--verbose")
+        .flag("--verbose")
             .alias("-v")
         .execute([&executed](CommandArgument& args) -> bool {
             // 通过主名称获取值
@@ -369,6 +394,247 @@ TEST_F(CmdParserTest, ArgumentAlias)
     // 混合使用
     executed = false;
     EXPECT_TRUE(parser.parse("alias_test --msg hello -v"));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// v2 新特性测试：变长位置参数
+// ============================================================================
+
+TEST_F(CmdParserTest, VariadicPositionalBasic)
+{
+    bool executed = false;
+    parser.registerCommand("variadic")
+        .positional<std::string>("files...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.positionalCount(), 3);
+            EXPECT_EQ(args.getPositional<std::string>(0), "a.txt");
+            EXPECT_EQ(args.getPositional<std::string>(1), "b.txt");
+            EXPECT_EQ(args.getPositional<std::string>(2), "c.txt");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic a.txt b.txt c.txt"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, VariadicPositionalWithZeroArgs)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_zero")
+        .positionalOptional<std::string>("files...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.positionalCount(), 0);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic_zero"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, VariadicPositionalWithZeroArgsError)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_zero")
+        .positional<std::string>("files...")  // 至少1个
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.positionalCount(), 0);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_THROW(parser.parse("variadic_zero"), exceptions::MissingRequiredArgument);
+}
+
+TEST_F(CmdParserTest, VariadicPositionalWithRequiredAndVariadic)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_mixed")
+        .positional<std::string>("first")
+        .positional<int>("numbers...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.positionalCount(), 4);
+            EXPECT_EQ(args.getPositional<std::string>(0), "file");
+            EXPECT_EQ(args.getPositional<int>(1), 1);
+            EXPECT_EQ(args.getPositional<int>(2), 2);
+            EXPECT_EQ(args.getPositional<int>(3), 3);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic_mixed file 1 2 3"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, VariadicPositionalWithOptionalAfterVariadic)
+{
+    // 变长参数后面不能有别的 positional
+    EXPECT_THROW({
+        parser.registerCommand("invalid_variadic")
+            .positional<std::string>("files...")
+            .positionalOptional<int>("extra");  // ❌ 不允许
+    }, exceptions::InvalidCommandSyntax);
+}
+
+TEST_F(CmdParserTest, VariadicPositionalWithFlagsAndPositionals)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_flags")
+        .flag("-v")
+        .argument<std::string>("-n")
+        .positional<std::string>("files...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_TRUE(args.has("-v"));
+            EXPECT_EQ(args.get<std::string>("-n"), "test");
+            EXPECT_EQ(args.positionalCount(), 3);
+            EXPECT_EQ(args.getPositional<std::string>(0), "a.txt");
+            EXPECT_EQ(args.getPositional<std::string>(1), "b.txt");
+            EXPECT_EQ(args.getPositional<std::string>(2), "c.txt");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic_flags -v -n test a.txt b.txt c.txt"));
+    EXPECT_TRUE(executed);
+}
+
+// ============================================================================
+// v2 新特性测试：默认值
+// ============================================================================
+
+TEST_F(CmdParserTest, DefaultValueBasic)
+{
+    bool executed = false;
+    parser.registerCommand("default_test")
+        .argumentOptional<std::string>("--name")
+            .defaultValue("world")
+        .argumentOptional<int>("--count")
+            .defaultValue(1)
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--name"), "world");
+            EXPECT_EQ(args.get<int>("--count"), 1);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("default_test"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, DefaultValueOverride)
+{
+    bool executed = false;
+    parser.registerCommand("default_override")
+        .argumentOptional<std::string>("--name")
+            .defaultValue("world")
+        .argumentOptional<int>("--count")
+            .defaultValue(1)
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--name"), "Alice");
+            EXPECT_EQ(args.get<int>("--count"), 42);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("default_override --name Alice --count 42"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, DefaultValuePartialOverride)
+{
+    bool executed = false;
+    parser.registerCommand("default_partial")
+        .argumentOptional<std::string>("--name")
+            .defaultValue("world")
+        .argumentOptional<int>("--count")
+            .defaultValue(1)
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--name"), "Bob");
+            EXPECT_EQ(args.get<int>("--count"), 1);  // 使用默认值
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("default_partial --name Bob"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, DefaultValueWithAlias)
+{
+    bool executed = false;
+    parser.registerCommand("default_alias")
+        .argumentOptional<std::string>("--message")
+            .defaultValue("hello")
+            .alias("-m")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--message"), "hi");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("default_alias -m hi"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, DefaultValueOnlyForOptional)
+{
+    // 只有 argumentOptional 可以有默认值
+    EXPECT_THROW({
+        parser.registerCommand("default_required")
+            .argument<std::string>("--name")
+                .defaultValue("world");  // ❌ 不允许
+    }, exceptions::InvalidCommandSyntax);
+}
+
+// ============================================================================
+// 组合测试：变长位置参数 + 默认值
+// ============================================================================
+
+TEST_F(CmdParserTest, VariadicAndDefaults)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_defaults")
+        .argumentOptional<std::string>("--prefix")
+            .defaultValue("file")
+            .alias("-p")
+        .argumentOptional<int>("--count")
+            .defaultValue(1)
+            .alias("-c")
+        .positional<std::string>("files...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--prefix"), "backup");
+            EXPECT_EQ(args.get<int>("--count"), 3);
+            EXPECT_EQ(args.positionalCount(), 2);
+            EXPECT_EQ(args.getPositional<std::string>(0), "a.txt");
+            EXPECT_EQ(args.getPositional<std::string>(1), "b.txt");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic_defaults -p backup -c 3 a.txt b.txt"));
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(CmdParserTest, VariadicAndDefaultsAllDefault)
+{
+    bool executed = false;
+    parser.registerCommand("variadic_all_default")
+        .argumentOptional<std::string>("--prefix")
+            .defaultValue("file")
+        .argumentOptional<int>("--count")
+            .defaultValue(1)
+        .positionalOptional<std::string>("files...")
+        .execute([&executed](CommandArgument& args) -> bool {
+            EXPECT_EQ(args.get<std::string>("--prefix"), "file");
+            EXPECT_EQ(args.get<int>("--count"), 1);
+            EXPECT_EQ(args.positionalCount(), 0);
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("variadic_all_default"));
     EXPECT_TRUE(executed);
 }
 
@@ -473,12 +739,12 @@ TEST(CommandArgumentTest, SetAndGet)
 TEST(CommandArgumentTest, AddPositional)
 {
     CommandArgument args;
-    args.addPositional("first");
-    args.addPositional("second");
+    args.addPositional(ArgumentValue("first", typeid(std::string)));
+    args.addPositional(ArgumentValue("second", typeid(std::string)));
 
     EXPECT_EQ(args.positionalCount(), 2);
-    EXPECT_EQ(args.getPositional(0), "first");
-    EXPECT_EQ(args.getPositional(1), "second");
+    EXPECT_EQ(args.getPositional<std::string>(0), "first");
+    EXPECT_EQ(args.getPositional<std::string>(1), "second");
 }
 
 TEST(CommandArgumentTest, GetArgumentNames)
@@ -504,7 +770,7 @@ TEST(IntegrationTest, FullWorkflow)
     parser.registerCommand("commit")
         .description("Commit changes")
         .argument<std::string>("-m")
-        .argumentFlag<bool>("-a")
+        .flag("-a")
         .execute([&expectedCommitMessage](CommandArgument &args) -> bool
                  {
             EXPECT_EQ(args.get<std::string>("-m"), expectedCommitMessage);
@@ -514,11 +780,11 @@ TEST(IntegrationTest, FullWorkflow)
     // Register push command
     parser.registerCommand("push")
         .description("Push changes")
-        .argumentFlag<bool>("--force")
+        .flag("--force")
         .positional<std::string>("branch")
         .execute([](CommandArgument &args) -> bool
                  {
-            EXPECT_EQ(args.getPositional(0), "main");
+            EXPECT_EQ(args.getPositional<std::string>(0), "main");
             EXPECT_TRUE(args.has("--force"));
             return true; });
 
@@ -559,9 +825,9 @@ TEST(ShortOptionTest, ExpandShortOptions) {
     CommandParser parser("shorttest");
     bool executed = false;
     parser.registerCommand("test")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
-        .argumentFlag<bool>("-c")
+        .flag("-a")
+        .flag("-b")
+        .flag("-c")
         .execute([&executed](CommandArgument &args) -> bool
         {
             EXPECT_TRUE(args.has("-a"));
@@ -578,8 +844,8 @@ TEST(ShortOptionTest, ExpandShortOptionsWithStringArgument) {
     CommandParser parser("shorttest2");
     bool executed = false;
     parser.registerCommand("test")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
+        .flag("-a")
+        .flag("-b")
         .argument<std::string>("-c")
         .execute([&executed](CommandArgument &args) -> bool
         {
@@ -598,8 +864,8 @@ TEST(ShortOptionTest, ExpandShortOptionsWithIntArgument) {
     CommandParser parser("shorttest2");
     bool executed = false;
     parser.registerCommand("test")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
+        .flag("-a")
+        .flag("-b")
         .argument<int>("-c")
         .execute([&executed](CommandArgument &args) -> bool
         {
@@ -634,7 +900,7 @@ TEST(ShortOptionTest, LoginWithCombinedShortOptionsAndAppendedValue) {
     std::string expectedUserName = "very_long_user_name";
 
     parser.registerCommand("login")
-    .argumentFlag<bool>("-i")
+    .flag("-i")
     .argument<std::string>("-u")
     .execute([&i_flag, &expectedUserName](CommandArgument &args) -> bool
     {
@@ -655,12 +921,12 @@ TEST(ShortOptionTest, ExpandComplexShortOptionsWithMixedFlagsAndIntArgument) {
     bool executed = false;
 
     parser.registerCommand("test")
-    .argumentFlag<bool>("-a")
-    .argumentFlag<bool>("-b")
+    .flag("-a")
+    .flag("-b")
     .argument<int>("-i")
-    .argumentFlag<bool>("-c")
-    .argumentFlag<bool>("-d")
-    .argumentFlag<bool>("-e")
+    .flag("-c")
+    .flag("-d")
+    .flag("-e")
     .execute([&executed](CommandArgument &args) -> bool
     {
         // 验证所有 flag 都存在
@@ -838,6 +1104,29 @@ TEST(TypeConversionTest, ParseDoubleValues) {
     EXPECT_DOUBLE_EQ(doubleValue, 1.234e-10);
 }
 
+TEST(TypeConversionTest, ParseSizeValues) {
+    cmdparser::CommandParser parser("test");
+    bool executed = false;
+    size_t intValue = 0;
+
+    parser.registerCommand("test")
+        .argument<size_t>("-n")
+        .execute([&executed, &intValue](cmdparser::CommandArgument& args) -> bool {
+            intValue = args.get<size_t>("-n");
+            executed = true;
+            return true;
+        });
+
+    EXPECT_TRUE(parser.parse("test -n 42"));
+    EXPECT_EQ(intValue, (size_t)42);
+
+    EXPECT_TRUE(parser.parse("test -n 114514"));
+    EXPECT_EQ(intValue, (size_t)114514);
+
+    EXPECT_TRUE(parser.parse("test -n 3"));
+    EXPECT_EQ(intValue, (size_t)3);
+}
+
 TEST(TypeConversionTest, ParseMixedTypes) {
     cmdparser::CommandParser parser("test");
     bool executed = false;
@@ -850,7 +1139,7 @@ TEST(TypeConversionTest, ParseMixedTypes) {
         .argument<int>("-i")
         .argument<float>("-f")
         .argument<std::string>("-s")
-        .argumentFlag<bool>("-b")
+        .flag("-b")
         .execute([&executed, &intVal, &floatVal, &strVal, &boolVal]
                  (cmdparser::CommandArgument& args) -> bool {
             intVal = args.get<int>("-i");
@@ -909,7 +1198,7 @@ TEST(TypeConversionTest, ShortOptionWithAppendedTypeConversion) {
 
     parser.registerCommand("test")
         .argument<int>("-n")
-        .argumentFlag<bool>("-v")
+        .flag("-v")
         .execute([&executed, &intVal](cmdparser::CommandArgument& args) -> bool {
             intVal = args.get<int>("-n");
             EXPECT_TRUE(args.has("-v"));
@@ -938,10 +1227,10 @@ TEST(TypeConversionTest, ShortOptionGroupWithMultipleTypes) {
     bool flagB = false;
 
     parser.registerCommand("test")
-        .argumentFlag<bool>("-a")
+        .flag("-a")
         .argument<int>("-i")
         .argument<float>("-f")
-        .argumentFlag<bool>("-b")
+        .flag("-b")
         .execute([&executed, &flagA, &intVal, &floatVal, &flagB]
                  (cmdparser::CommandArgument& args) -> bool {
             flagA = args.get<bool>("-a");
@@ -983,32 +1272,32 @@ protected:
     {
         // 注册一个包含大量标志和少量带参数选项的命令
         parser.registerCommand("stress")
-            .argumentFlag<bool>("-a")
-            .argumentFlag<bool>("-b")
-            .argumentFlag<bool>("-c")
-            .argumentFlag<bool>("-d")
-            .argumentFlag<bool>("-e")
-            .argumentFlag<bool>("-f")
-            .argumentFlag<bool>("-g")
-            .argumentFlag<bool>("-h")
+            .flag("-a")
+            .flag("-b")
+            .flag("-c")
+            .flag("-d")
+            .flag("-e")
+            .flag("-f")
+            .flag("-g")
+            .flag("-h")
             .argument<int>("-i")          // i 需要参数
-            .argumentFlag<bool>("-j")
-            .argumentFlag<bool>("-k")
-            .argumentFlag<bool>("-l")
-            .argumentFlag<bool>("-m")
-            .argumentFlag<bool>("-n")
-            .argumentFlag<bool>("-o")
-            .argumentFlag<bool>("-p")
-            .argumentFlag<bool>("-q")
-            .argumentFlag<bool>("-r")
-            .argumentFlag<bool>("-s")
-            .argumentFlag<bool>("-t")
-            .argumentFlag<bool>("-u")
-            .argumentFlag<bool>("-v")
+            .flag("-j")
+            .flag("-k")
+            .flag("-l")
+            .flag("-m")
+            .flag("-n")
+            .flag("-o")
+            .flag("-p")
+            .flag("-q")
+            .flag("-r")
+            .flag("-s")
+            .flag("-t")
+            .flag("-u")
+            .flag("-v")
             .argument<std::string>("-w")  // w 需要参数
-            .argumentFlag<bool>("-x")
-            .argumentFlag<bool>("-y")
-            .argumentFlag<bool>("-z")
+            .flag("-x")
+            .flag("-y")
+            .flag("-z")
             .execute([](CommandArgument &args) -> bool {
                 // 验证所有标志
                 EXPECT_TRUE(args.has("-a"));
@@ -1062,7 +1351,7 @@ TEST_F(StressTest, ShortOptionsWithSpaceSeparatedValues)
 TEST_F(StressTest, MixedShortOptionGroups)
 {
     EXPECT_TRUE(parser.parse("stress -abc -defghi12345 -jklmnopqrstuvwhello -xyz"));
-    EXPECT_TRUE(parser.parse("stress -abcdef -ghi12345 -jklmnopqrstuvwhello -xyz"));
+    EXPECT_TRUE(parser.parse("stress -afdecb -ghi12345 -jklmxnopqyrstuvzwhello"));
 }
 
 // 测试4：只有标志，没有带参数选项
@@ -1070,26 +1359,26 @@ TEST_F(StressTest, FlagsOnlyShortOptions)
 {
     // 注册一个全部是标志的命令
     parser.registerCommand("flags_only")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
-        .argumentFlag<bool>("-c")
-        .argumentFlag<bool>("-d")
-        .argumentFlag<bool>("-e")
-        .argumentFlag<bool>("-f")
-        .argumentFlag<bool>("-g")
-        .argumentFlag<bool>("-h")
-        .argumentFlag<bool>("-i")
-        .argumentFlag<bool>("-j")
-        .argumentFlag<bool>("-k")
-        .argumentFlag<bool>("-l")
-        .argumentFlag<bool>("-m")
-        .argumentFlag<bool>("-n")
-        .argumentFlag<bool>("-o")
-        .argumentFlag<bool>("-p")
-        .argumentFlag<bool>("-q")
-        .argumentFlag<bool>("-r")
-        .argumentFlag<bool>("-s")
-        .argumentFlag<bool>("-t")
+        .flag("-a")
+        .flag("-b")
+        .flag("-c")
+        .flag("-d")
+        .flag("-e")
+        .flag("-f")
+        .flag("-g")
+        .flag("-h")
+        .flag("-i")
+        .flag("-j")
+        .flag("-k")
+        .flag("-l")
+        .flag("-m")
+        .flag("-n")
+        .flag("-o")
+        .flag("-p")
+        .flag("-q")
+        .flag("-r")
+        .flag("-s")
+        .flag("-t")
         .execute([](CommandArgument &args) -> bool {
             // 验证所有标志
             EXPECT_TRUE(args.has("-a"));
@@ -1178,19 +1467,19 @@ TEST_F(StressTest, ComplexMixedFlagsAndValues)
 {
     bool executed = false;
     parser.registerCommand("complex")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
+        .flag("-a")
+        .flag("-b")
         .argument<int>("-c")
-        .argumentFlag<bool>("-d")
-        .argumentFlag<bool>("-e")
+        .flag("-d")
+        .flag("-e")
         .argument<std::string>("-f")
-        .argumentFlag<bool>("-g")
+        .flag("-g")
         .argument<int>("-h")
-        .argumentFlag<bool>("-i")
-        .argumentFlag<bool>("-j")
-        .argumentFlag<bool>("-k")
+        .flag("-i")
+        .flag("-j")
+        .flag("-k")
         .argument<std::string>("-l")
-        .argumentFlag<bool>("-m")
+        .flag("-m")
         .execute([&executed](CommandArgument &args) -> bool {
             EXPECT_TRUE(args.has("-a"));
             EXPECT_TRUE(args.has("-b"));
@@ -1233,7 +1522,7 @@ TEST_F(StressTest, MaximumFlagsOnly)
     for (int i = 0; i < 52; ++i) {
         char c = (i < 26) ? ('a' + i) : ('A' + i - 26);
         std::string flagName = "-" + std::string(1, c);
-        builder.argumentFlag<bool>(flagName);
+        builder.flag(flagName);
         allFlags += c;
     }
     
@@ -1286,16 +1575,16 @@ TEST_F(StressTest, MixedLongShortStress)
 {
     bool executed = false;
     parser.registerCommand("mix_stress")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("--flag-a")
+        .flag("-a")
+        .flag("--flag-a")
         .argument<int>("-b")
         .argument<int>("--flag-b")
-        .argumentFlag<bool>("-c")
-        .argumentFlag<bool>("--flag-c")
+        .flag("-c")
+        .flag("--flag-c")
         .argument<std::string>("-d")
         .argument<std::string>("--flag-d")
-        .argumentFlag<bool>("-e")
-        .argumentFlag<bool>("--flag-e")
+        .flag("-e")
+        .flag("--flag-e")
         .argument<double>("-f")
         .argument<double>("--flag-f")
         .execute([&executed](CommandArgument &args) -> bool {
@@ -1382,10 +1671,10 @@ TEST_F(StressTest, PositionalsWithShortOptions)
 {
     bool executed = false;
     parser.registerCommand("pos_stress")
-        .argumentFlag<bool>("-a")
-        .argumentFlag<bool>("-b")
+        .flag("-a")
+        .flag("-b")
         .argument<int>("-c")
-        .argumentFlag<bool>("-d")
+        .flag("-d")
         .argument<std::string>("-e")
         .positional<std::string>("file1")
         .positional<std::string>("num1")
@@ -1398,8 +1687,8 @@ TEST_F(StressTest, PositionalsWithShortOptions)
             EXPECT_TRUE(args.has("-d"));
             EXPECT_TRUE(args.has("-e"));
             EXPECT_EQ(args.get<std::string>("-e"), "hello");
-            EXPECT_EQ(args.getPositional(0), "input.txt");
-            EXPECT_EQ(args.getPositional(1), "123");
+            EXPECT_EQ(args.getPositional<std::string>(0), "input.txt");
+            EXPECT_EQ(args.getPositional<std::string>(1), "123");
             EXPECT_EQ(args.positionalCount(), 2);
             executed = true;
             return true;

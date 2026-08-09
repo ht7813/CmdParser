@@ -1,6 +1,29 @@
-# CmdParser
+# CmdParser v2
+
+> **⚠️ IMPORTANT: This is v2 (breaking changes from v1)**
+> 
+> CmdParser v2 introduces several breaking changes to improve API design and POSIX compliance.
+> If you're upgrading from v1, please read [MIGRATION.md](MIGRATION.md) for detailed upgrade instructions.
+> 
+> For v1 users, please stick with the v1 branch/tag.
 
 A lightweight C++ CLI command parser library supporting subcommands, positional arguments, flag arguments, and type-safe parameter retrieval.
+
+## Installation
+
+Copy `cmdparser.hpp` into your project include directory or next to your source files.
+
+### Example
+
+```bash
+cp cmdparser.hpp /path/to/your/project/
+```
+
+Then include it in your source:
+
+```cpp
+#include "cmdparser.hpp"
+```
 
 ## Features
 
@@ -8,6 +31,9 @@ A lightweight C++ CLI command parser library supporting subcommands, positional 
 - **Multiple argument types** - Positional arguments, optional arguments, and boolean flags
 - **Type-safe retrieval** - Get arguments with automatic type conversion
 - **Alias support** - Create command aliases (e.g., `ci` → `commit`)
+- **Parameter aliases** - Create aliases for arguments (e.g., `-m` → `--message`) ✨ NEW in v2
+- **POSIX `--` support** - Stop parsing options, treat rest as positional arguments ✨ NEW in v2
+- **Unclosed quote detection** - Clear error messages for syntax errors ✨ NEW in v2
 - **Help generation** - Built-in help text support
 - **Exception handling** - Clear error messages for syntax errors
 
@@ -74,8 +100,10 @@ Chainable builder for command configuration:
 parser.registerCommand("cmd")
     .description("Description text")
     .argument<T>("name")           // Required named argument
+        .alias("alias")            // Alias
     .argumentOptional<T>("name")   // Optional named argument
-    .argumentFlag<T>("name")       // Flag argument (boolean)
+        .defaultValue("value")     // Default Value
+    .flag("name")       // Flag argument (boolean)
     .positional<T>("name")          // Required positional argument
     .positionalOptional<T>("name")  // Optional positional argument
     .execute(handler);
@@ -92,7 +120,7 @@ execute([](CommandArgument& args) -> bool {
     bool flag = args.has("flag_name");
     
     // Positional arguments
-    std::string pos = args.getPositional(0);
+    std::string pos = args.getPositional<std::string>(0);
     size_t count = args.positionalCount();
     
     // Check existence
@@ -111,13 +139,15 @@ execute([](CommandArgument& args) -> bool {
 ```cpp
 parser.registerCommand("commit")
     .description("Commit changes")
-    .argument<std::string>("-m")           // Required message
-    .argumentFlag<bool>("-a")              // Optional all flag
+    .argument<std::string>("--message")           // Required message
+        .alias("-m")
+    .flag("--all")                             // Optional all flag
+        .alias("-a")
     .positional<std::string>("file")        // Required file
     .execute([](CommandArgument& args) -> bool {
-        std::string message = args.get<std::string>("-m");
-        bool all = args.has("-a");
-        std::string file = args.getPositional(0);
+        std::string message = args.get<std::string>("--message");
+        bool all = args.has("--all");
+        std::string file = args.getPositional<std::string>(0);
         
         std::cout << "Committing: " << file << std::endl;
         std::cout << "Message: " << message << std::endl;
@@ -137,8 +167,10 @@ mycli commit -a -m "Update all" .
 ```cpp
 parser.registerCommand("push")
     .description("Push to remote")
-    .argumentFlag<bool>("--force")
+    .flag("--force")
+        .alias("-f")
     .argumentOptional<std::string>("--remote")
+        .alias("-r")
     .positional<std::string>("branch")
     .execute([](CommandArgument& args) -> bool {
         std::string branch = args.getPositional(0);
@@ -190,7 +222,7 @@ The library uses type erasure internally and supports these common types:
 |------|-------|-------------|
 | `std::string` | `.argument<std::string>("-n")` | String values |
 | `int` | `.argument<int>("--port")` | Integer values |
-| `bool` | `.argumentFlag<bool>("-v")` | Boolean flags |
+| `bool` | `.flag("-v")` | Boolean flags |
 
 Type conversion is performed when calling `args.get<T>()`.
 
@@ -199,12 +231,12 @@ Type conversion is performed when calling `args.get<T>()`.
 ```cpp
 try {
     parser.parse(argc, argv);
-} catch (const exceptions::InvalidCommandSyntax& e) {
-    // Syntax errors (missing args, invalid format)
 } catch (const exceptions::UnknownCommand& e) {
     // Command not found
 } catch (const exceptions::MissingRequiredArgument& e) {
     // Required argument missing
+} catch (const exceptions::InvalidCommandSyntax& e) {
+    // Other Syntax errors (missing args, invalid format)
 } catch (const std::exception& e) {
     // Other errors
 }
