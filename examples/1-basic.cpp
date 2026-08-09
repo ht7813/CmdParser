@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
             .alias("--message")
             .defaultValue("Hello")
             .argDescription("Greeting message")
-        .positionalOptional<std::string>("times")
+        .positionalOptional<int>("times")
             .argDescription("Number of times to greet (default: 1)")
         .execute([](CommandArgument& args) -> bool {
             std::string name = args.get<std::string>("-n");

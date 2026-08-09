@@ -17,13 +17,18 @@ int main() {
     CommandParser parser("shell");
     
     parser.registerCommand("echo")
-        .description("Echo text")
-        .positionalOptional<std::string>("text")
-            .argDescription("Text to echo")
-        .execute([](CommandArgument& args) -> bool {
-            std::cout << ((args.positionalCount() > 0) ? args.getPositional<std::string>(0) : "") << std::endl;
-            return true;
-        });
+    .description("Echo text")
+    .flag("-n")
+        .argDescription("No newline")
+    .positionalOptional<std::string>("text...")
+    .execute([](CommandArgument& args) -> bool {
+        for (size_t i = 0; i < args.positionalCount(); i++) {
+            if (i > 0) std::cout << " ";
+            std::cout << args.getPositional<std::string>(i);
+        }
+        if (!args.has("-n")) std::cout << std::endl;
+        return true;
+    });
     
     parser.registerCommand("calc")
         .description("Simple calculator")

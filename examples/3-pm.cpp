@@ -54,9 +54,10 @@ int main(int argc, char* argv[]) {
     parser.registerCommand("remove")
         .description("Remove packages")
         .flag("--purge")
+            .alias("-p")
             .argDescription("Remove configuration files too")
-        .argumentOptional<bool>("--recursive")
-            .defaultValue(false)
+        .flag("--recursive")
+            .alias("-r")
             .argDescription("Remove dependencies recursively")
         .positional<std::string>("packages...")
             .argDescription("Packages to remove (at least one)")
@@ -64,7 +65,7 @@ int main(int argc, char* argv[]) {
             bool purge = args.has("--purge");
             bool recursive = false;
             if (args.has("--recursive")) {
-                recursive = args.get<bool>("--recursive");
+                recursive = args.has("--recursive");
             }
             
             std::cout << "Removing packages:" << std::endl;
