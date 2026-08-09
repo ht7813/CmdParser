@@ -146,7 +146,7 @@ parser.registerCommand("push")
 | Boolean flag | `.argumentFlag<bool>("-v")` | `.flag("-v")` |
 | Required argument | `.argument<T>("name")` | `.argument<T>("name")` |
 | Optional argument | `.argumentOptional<T>("name")` | `.argumentOptional<T>("name")` |
-| Optional with default | ❌ | `.argumentOptional<T>("name", default)` |
+| Optional with default | ❌ | `.defaultValue("value")` |
 | Positional | `.positional<T>("name")` | `.positional<T>("name")` |
 | Positional (typed) | `args.getPositional(0)` | `args.getPositional<T>(0)` |
 | Positional (variadic) | ❌ | `.positional<T>("name...")` |
