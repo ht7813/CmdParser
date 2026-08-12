@@ -65,7 +65,7 @@ class CommandParser;
 // Internal Helpers
 // ============================================================================
 namespace __internal {
-    bool endsWith(const std::string& str, const std::string& suffix) {
+    inline bool endsWith(const std::string& str, const std::string& suffix) {
         #if __CMDPARSER_CPP_STANDARD >= 202002L
         return str.ends_with(suffix); // C++ 20
         #else
@@ -74,7 +74,7 @@ namespace __internal {
         #endif
     }
 
-    bool isVariadicArg(const std::string& name) {
+    inline bool isVariadicArg(const std::string& name) {
         return endsWith(name, "...");
     }
 }
