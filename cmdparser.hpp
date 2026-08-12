@@ -532,10 +532,10 @@ public:
         : name("")
         , type(typeid(void))
         , isPositional(false)
-        , isOptional(true) {}
+        , isOptional(true), hasDefault(false) {}
 
         ArgumentDef(const std::string& n, const std::type_info& t, bool pos = false, bool opt = true)
-            : name(n), type(t), isPositional(pos), isOptional(opt) {}
+            : name(n), type(t), isPositional(pos), isOptional(opt), hasDefault(false) {}
         
         void addAlias(const std::string& alias) {
             if (std::find(aliases.begin(), aliases.end(), alias) != aliases.end()) throw exceptions::DuplicateArgumentAlias(alias, name);
