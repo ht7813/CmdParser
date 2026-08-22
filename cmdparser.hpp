@@ -1034,8 +1034,8 @@ public:
 
         for (char c : cmdLine) {
             if (inQuotes) {
-                if (c == quoteChar && !current.empty()) {
-                    tokens.push_back(current); // push token
+                if (c == quoteChar) {
+                    if (!current.empty()) tokens.push_back(current); // push token
                     current.clear(); // clear current
                     inQuotes = false; // 取消设置状态
                 } else {
@@ -1044,8 +1044,8 @@ public:
             } else if (c == '"' || c == '\'') { // 是quote
                 inQuotes = true;
                 quoteChar = c;
-            } else if (std::isspace(c) && !current.empty()) { // 遇到空格
-                tokens.push_back(current); // push token
+            } else if (std::isspace(c)) { // 遇到空格
+                if (!current.empty()) tokens.push_back(current); // push token
                 current.clear(); // clear current
             } else {
                 current += c;
