@@ -5,25 +5,16 @@
 > CmdParser v2 introduces several breaking changes to improve API design and POSIX compliance.
 > If you're upgrading from v1, please read [MIGRATION.md](MIGRATION.md) for detailed upgrade instructions.
 > 
+> **📌 Note for all developers (Windows, Linux, macOS):**
+> As of commit `431d5f844`, all source files have been normalized to **LF (Unix-style) line endings**.
+> This change does not affect the API or ABI, but ensures consistent builds across all platforms.
+> - **Windows**: Please set `git config core.autocrlf true` **before** pulling this update.
+> - **Linux/macOS**: No action required.
+> - **Reviewers**: Use `git blame -w` to ignore whitespace changes.
+> 
 > For v1 users, please stick with the v1 branch/tag.
 
 A lightweight C++ CLI command parser library supporting subcommands, positional arguments, flag arguments, and type-safe parameter retrieval.
-
-## Installation
-
-Copy `cmdparser.hpp` into your project include directory or next to your source files.
-
-### Example
-
-```bash
-cp cmdparser.hpp /path/to/your/project/
-```
-
-Then include it in your source:
-
-```cpp
-#include "cmdparser.hpp"
-```
 
 ## Features
 
@@ -38,6 +29,10 @@ Then include it in your source:
 - **Exception handling** - Clear error messages for syntax errors
 
 ## Quick Start
+
+### Installation
+
+Copy `cmdparser.hpp` into your project include directory or next to your source files.
 
 ### Basic Usage
 
