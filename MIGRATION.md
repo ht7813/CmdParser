@@ -68,7 +68,8 @@ float f = args.getPositional<float>(2);
 int count = args.has("--count") ? args.get<int>("--count") : 1;
 
 // v2 (with default value)
-.argumentOptional<int>("--count", 1)
+.argumentOptional<int>("--count")
+    .defaultValue(1)
 int count = args.get<int>("--count");  // Returns 1 if not provided
 ```
 
